@@ -2,18 +2,13 @@
 
 namespace Guzzle\Service;
 
-use Guzzle\Guzzle;
 use Guzzle\Common\Collection;
 use Guzzle\Common\Exception\InvalidArgumentException;
 use Guzzle\Service\Exception\ValidationException;
-use Symfony\Component\Validator\Constraint;
-use Symfony\Component\Validator\ConstraintValidatorFactory;
-use Symfony\Component\Validator\Validator;
-use Symfony\Component\Validator\Mapping\Loader\StaticMethodLoader;
-use Symfony\Component\Validator\Mapping\ClassMetadataFactory;
+use Guzzle\Service\Description\ApiParam;
 
 /**
- * Inpects configuration options versus defined parameters, adding default
+ * Inspects configuration options versus defined parameters, adding default
  * values where appropriate, performing type validation on config settings, and
  * validating input vs output data.
  *
@@ -49,39 +44,44 @@ class Inspector
     protected $constraints = array();
 
     /**
-     * @var Validator
+     * @var Cache of instantiated constraints
      */
-    protected $validator;
+    protected $constraintCache = array();
+
+    /**
+     * @var bool
+     */
+    protected $typeValidation = true;
 
     /**
      * Constructor to create a new Inspector
      */
     public function __construct()
     {
-        $base = 'Symfony\\Component\\Validator\\Constraints\\';
+        $base = 'Guzzle\\Common\\Validation\\';
         $this->constraints = array(
             'blank'     => array($base . 'Blank', null),
             'not_blank' => array($base . 'NotBlank', null),
-            'integer'   => array($base . 'Type', array('type' => 'numeric')),
-            'float'     => array($base . 'Type', array('type' => 'numeric')),
+            'integer'   => array($base . 'Numeric', null),
+            'float'     => array($base . 'Numeric', null),
             'string'    => array($base . 'Type', array('type' => 'string')),
-            'date'      => array($base . 'Date', null),
-            'date_time' => array($base . 'DateTime', null),
-            'time'      => array($base . 'Time', null),
-            'boolean'   => array($base . 'Choice', array('choices' => array('true', 'false', '0', '1'))),
-            'country'   => array($base . 'Country', null),
+            'file'      => array($base . 'Type', array('type' => 'file')),
+            'array'     => array($base . 'Type', array('type' => 'array')),
+            'bool'      => array($base . 'Bool', null),
+            'boolean'   => array($base . 'Bool', null),
             'email'     => array($base . 'Email', null),
             'ip'        => array($base . 'Ip', null),
-            'language'  => array($base . 'Language', null),
-            'locale'    => array($base . 'Locale', null),
             'url'       => array($base . 'Url', null),
-            'file'      => array($base . 'File', null),
-            'image'     => array($base . 'Image', null),
-            'class'     => array($base . 'Type', null),
+            'class'     => array($base . 'IsInstanceOf', null),
             'type'      => array($base . 'Type', null),
+            'any_match' => array($base . 'AnyMatch', null),
+            'ctype'     => array($base . 'Ctype', null),
             'choice'    => array($base . 'Choice', null),
             'enum'      => array($base . 'Choice', null),
-            'regex'     => array($base . 'Regex', null)
+            'regex'     => array($base . 'Regex', null),
+            'date'      => array($base . 'Type', array('type' => 'string')),
+            'date_time' => array($base . 'Type', array('type' => 'string')),
+            'time'      => array($base . 'Numeric', null)
         );
     }
 
@@ -104,19 +104,21 @@ class Inspector
     /**
      * Validate and prepare configuration parameters
      *
-     * @param array $config Configuration values to apply.
-     * @param array $defaults (optional) Default parameters
-     * @param array $required (optional) Required parameter names
+     * @param array $config   Configuration values to apply.
+     * @param array $defaults Default parameters
+     * @param array $required Required parameter names
      *
      * @return Collection
      * @throws InvalidArgumentException if a parameter is missing
      */
-    public static function prepareConfig(array $config = null, $defaults = null, $required = null)
+    public static function prepareConfig(array $config = null, array $defaults = null, array $required = null)
     {
-        $collection = new Collection((array) $defaults);
+        $collection = new Collection($defaults);
+
         foreach ((array) $config as $key => $value) {
             $collection->set($key, $value);
         }
+
         foreach ((array) $required as $key) {
             if ($collection->hasKey($key) === false) {
                 throw new ValidationException(
@@ -129,32 +131,16 @@ class Inspector
     }
 
     /**
-     * Set the validator to use with the inspector
+     * Enable/disable type validation of configuration settings.  This is
+     * useful for very high performance requirements.
      *
-     * @param Validator $validator Validator to use with the Inspector
+     * @param bool $typeValidation Set to TRUE or FALSE
      *
      * @return Inspector
      */
-    public function setValidator(Validator $validator)
+    public function setTypeValidation($typeValidation)
     {
-        $this->validator = $validator;
-
-        return $this;
-    }
-
-    /**
-     * Get the validator associated with the inspector.  A default validator
-     * will be created if none has already been associated
-     *
-     * @return Validator
-     */
-    public function getValidator()
-    {
-        if (!$this->validator) {
-            $this->validator = new Validator(new ClassMetadataFactory(new StaticMethodLoader()), new ConstraintValidatorFactory());
-        }
-
-        return $this->validator;
+        $this->typeValidation = $typeValidation;
     }
 
     /**
@@ -172,9 +158,9 @@ class Inspector
     /**
      * Register a constraint class with a special name
      *
-     * @param string $name Name of the constraint to register
-     * @param string $class Name of the class or object to use when filtering by this name
-     * @param array $default Default values to pass to the constraint
+     * @param string $name    Name of the constraint to register
+     * @param string $class   Name of the class or object to use when filtering by this name
+     * @param array  $default Default values to pass to the constraint
      *
      * @return Inspector
      */
@@ -184,63 +170,88 @@ class Inspector
     }
 
     /**
-     * Get the Guzzle arguments from a DocBlock
+     * Get a constraint by name
      *
-     * @param string $doc DocBlock to parse
+     * @param string $name Constraint name
      *
-     * @return array Returns an associative array of the parsed docblock params
+     * @return ConstraintInterface
+     * @throws InvalidArgumentException if the constraint is not registered
      */
-    public function parseDocBlock($doc)
+    public function getConstraint($name)
     {
-        $matches = array();
-        // Get all of the @guzzle annotations from the class
-        preg_match_all('/' . self::GUZZLE_ANNOTATION . '\s+([A-Za-z0-9_\-\.]+)\s*([A-Za-z0-9]+=".+")*/', $doc, $matches);
-        if (empty($matches[1])) {
-            return array();
+        if (!isset($this->constraints[$name])) {
+            throw new InvalidArgumentException($name . ' has not been registered');
         }
 
-        $params = array();
-        foreach ($matches[1] as $index => $match) {
-            // Add the matched argument to the array keys
-            $params[$match] = array();
-            if (isset($matches[2])) {
-                // Break up the argument attributes by closing quote
-                foreach (explode('" ', $matches[2][$index]) as $part) {
-                    $attrs = array();
-                    // Find the attribute and attribute value
-                    preg_match('/([A-Za-z0-9]+)="(.+)"*/', $part, $attrs);
-                    if (isset($attrs[1]) && isset($attrs[0])) {
-                        // Sanitize the strings
-                        if ($attrs[2][strlen($attrs[2]) - 1] == '"') {
-                            $attrs[2] = substr($attrs[2], 0, strlen($attrs[2]) - 1);
-                        }
-                        $params[$match][$attrs[1]] = $attrs[2];
-                    }
-                }
-            }
+        if (!isset($this->constraintCache[$name])) {
+            $c = $this->constraints[$name][0];
+            $this->constraintCache[$name] = new $c();
         }
 
-        return $params;
+        return $this->constraintCache[$name];
     }
 
     /**
-     * Validates that a class has all of the required configuration settings
+     * Validate a constraint by name: e.g. "type:Guzzle\Common\Collection";
+     * type:string; choice:a,b,c; choice:'a','b','c'; etc...
      *
-     * @param string $className Name of the class to use to retrieve args
-     * @param Collection $config Configuration settings
-     * @param bool $strict (optional) Set to FALSE to allow missing required fields
+     * @param string $name  Constraint to retrieve with optional CSV args after colon
+     * @param mixed  $value Value to validate
      *
-     * @return array|bool Returns an array of errors or TRUE on success
-     * @throws InvalidArgumentException if any args are missing and $strict is TRUE
+     * @return bool|string Returns TRUE if valid, or an error message if invalid
      */
-    public function validateClass($className, Collection $config, $strict = true)
+    public function validateConstraint($name, $value)
     {
-        if (!isset($this->cache[$className])) {
-            $reflection = new \ReflectionClass($className);
-            $this->cache[$className] = $this->parseDocBlock($reflection->getDocComment());
+        $parts = explode(':', $name, 2);
+        $name = $parts[0];
+
+        $constraint = $this->getConstraint($name);
+
+        if (empty($parts[1])) {
+            $args = $this->constraints[$name][1];
+        } elseif (strpos($parts[1], ',')) {
+            $args = str_getcsv($parts[1], ',', "'");
+        } else {
+            $args = array($parts[1]);
         }
 
-        return $this->validateConfig($this->cache[$className], $config, $strict);
+        return $constraint->validate($value, $args);
+    }
+
+    /**
+     * Get an array of ApiParam objects for a class using @guzzle annotations
+     *
+     * @param string $class Name of a class to parse
+     *
+     * @return array Returns an array of ApiParam objects
+     */
+    public function getApiParamsForClass($class)
+    {
+        if (!isset($this->cache[$class])) {
+            $reflection = new \ReflectionClass($class);
+            $this->cache[$class] = $this->parseDocBlock($reflection->getDocComment());
+        }
+
+        return $this->cache[$class];
+    }
+
+    /**
+     * Initialize a configuration collection with static and default parameters
+     *
+     * @param array      $params Array of ApiParam objects
+     * @param Collection $config Collection of configuration options
+     */
+    public function initConfig(array $params, Collection $config)
+    {
+        foreach ($params as $name => $arg) {
+            $currentValue = $config->get($name);
+            $configValue = $arg->getValue($currentValue);
+            // If default or static values are set, then this should always be
+            // updated on the config object
+            if ($currentValue !== $configValue) {
+                $config->set($name, $configValue);
+            }
+        }
     }
 
     /**
@@ -249,9 +260,9 @@ class Inspector
      * default args to the passed config object if the parameter was not
      * set in the config object.
      *
-     * @param array $params Params to validate
-     * @param Collection $config Configuration settings
-     * @param bool $strict (optional) Set to FALSE to allow missing required fields
+     * @param array      $params     Params to validate
+     * @param Collection $config     Configuration settings
+     * @param bool       $strict     Set to false to allow missing required fields
      *
      * @return array|bool Returns an array of errors or TRUE on success
      *
@@ -263,68 +274,52 @@ class Inspector
 
         foreach ($params as $name => $arg) {
 
-            if (is_array($arg)) {
-                $arg = new Collection($arg);
-            }
-
-            // Set the default value if it is not set
-            if ($arg->get('static') || ($arg->get('default') && !$config->get($name))) {
-                $check = $arg->get('static', $arg->get('default'));
-                if ($check === 'true') {
-                    $config->set($name, true);
-                } else if ($check == 'false') {
-                    $config->set($name, false);
-                } else {
-                    $config->set($name, $check);
-                }
-            }
+            $currentValue = $config->get($name);
+            $configValue = $arg->getValue($currentValue);
 
             // Inject configuration information into the config value
-            if (is_scalar($config->get($name)) && strpos($config->get($name), '{') !== false) {
-                $config->set($name, Guzzle::inject($config->get($name), $config));
+            if ($configValue && is_string($configValue)) {
+                $configValue = $config->inject($configValue);
             }
 
             // Ensure that required arguments are set
-            if ($arg->get('required') && !$config->get($name)) {
-                $errors[] = 'Requires that the ' . $name . ' argument be supplied.' . ($arg->get('doc') ? '  (' . $arg->get('doc') . ').' : '');
-                continue;
-            }
-
-            // Skip further validation if the arg is not set
-            if ($config->hasKey($name) === false) {
+            if ($arg->getRequired() && ($configValue === null || $configValue === '')) {
+                $errors[] = 'Requires that the ' . $name . ' argument be supplied.' . ($arg->getDoc() ? '  (' . $arg->getDoc() . ').' : '');
                 continue;
             }
 
             // Ensure that the correct data type is being used
-            if ($arg->get('type')) {
-                $constraint = $this->getConstraint($arg->get('type'));
-                $result = $this->getValidator()->validateValue($config->get($name), $constraint);
-                if (!empty($result)) {
-                    $errors = array_merge($errors, array_map(function($message) {
-                        return $message->getMessage();
-                    }, $result->getIterator()->getArrayCopy()));
+            if ($this->typeValidation && $configValue !== null && $argType = $arg->getType()) {
+                $validation = $this->validateConstraint($argType, $configValue);
+                if ($validation !== true) {
+                    $errors[] = $name . ': ' . $validation;
+                    $config->set($name, $configValue);
+                    continue;
                 }
             }
 
-            // Run the value through attached filters
-            if ($arg->get('filters')) {
-                foreach (explode(',', $arg->get('filters')) as $filter) {
-                    $config->set($name, call_user_func(trim($filter), $config->get($name)));
-                }
+            $configValue = $arg->filter($configValue);
+
+            // Update the config value if it changed
+            if (!$configValue !== $currentValue) {
+                $config->set($name, $configValue);
             }
 
-            // Check the length values
-            if ($arg->get('min_length') && strlen($config->get($name)) < $arg->get('min_length')) {
-                $errors[] = 'Requires that the ' . $name . ' argument be >= ' . $arg->get('min_length') . ' characters.';
+            // Check the length values if validating data
+            $argMinLength = $arg->getMinLength();
+            if ($argMinLength && strlen($configValue) < $argMinLength) {
+                $errors[] = 'Requires that the ' . $name . ' argument be >= ' . $arg->getMinLength() . ' characters.';
             }
-            if ($arg->get('max_length') && strlen($config->get($name)) > $arg->get('max_length')) {
-                $errors[] = 'Requires that the ' . $name . ' argument be <= ' . $arg->get('max_length') . ' characters.';
+
+            $argMaxLength = $arg->getMaxLength();
+            if ($argMaxLength && strlen($configValue) > $argMaxLength) {
+                $errors[] = 'Requires that the ' . $name . ' argument be <= ' . $arg->getMaxLength() . ' characters.';
             }
         }
 
         if (empty($errors)) {
             return true;
-        } else if ($strict) {
+        } elseif ($strict) {
             throw new ValidationException('Validation errors: ' . implode("\n", $errors));
         }
 
@@ -332,29 +327,42 @@ class Inspector
     }
 
     /**
-     * Get a constraint by name: e.g. "type:Guzzle\Common\Collection"
+     * Get the Guzzle arguments from a DocBlock
      *
-     * @param string $name Name of the constraint to retrieve
+     * @param string $doc Docblock to parse
      *
-     * @return Constraint
+     * @return array Returns an associative array of ApiParam objects
      */
-    public function getConstraint($name)
+    protected function parseDocBlock($doc)
     {
-        $parts = array_map('trim', explode(':', $name, 2));
-        $name = $parts[0];
+        // Get all of the @guzzle annotations from the class
+        $matches = array();
+        preg_match_all('/' . self::GUZZLE_ANNOTATION . '\s+([A-Za-z0-9_\-\.]+)\s*([A-Za-z0-9]+=".+")*/', $doc, $matches);
 
-        if (!isset($this->constraints[$name])) {
-            throw new InvalidArgumentException($name . ' has not been registered');
+        $params = array();
+        if (!empty($matches[1])) {
+            foreach ($matches[1] as $index => $match) {
+                // Add the matched argument to the array keys
+                $params[$match] = array();
+                if (isset($matches[2])) {
+                    // Break up the argument attributes by closing quote
+                    foreach (explode('" ', $matches[2][$index]) as $part) {
+                        $attrs = array();
+                        // Find the attribute and attribute value
+                        preg_match('/([A-Za-z0-9]+)="(.+)"*/', $part, $attrs);
+                        if (isset($attrs[1]) && isset($attrs[0])) {
+                            // Sanitize the strings
+                            if ($attrs[2][strlen($attrs[2]) - 1] == '"') {
+                                $attrs[2] = substr($attrs[2], 0, strlen($attrs[2]) - 1);
+                            }
+                            $params[$match][$attrs[1]] = $attrs[2];
+                        }
+                    }
+                }
+                $params[$match] = new ApiParam($params[$match]);
+            }
         }
 
-        if (!empty($parts[1])) {
-            $args = strpos($parts[1], ',') ? str_getcsv($parts[1], ',', "'") : $parts[1];
-        } else {
-            $args = $this->constraints[$name][1];
-        }
-
-        $class = $this->constraints[$name][0];
-
-        return new $class($args);
+        return $params;
     }
 }

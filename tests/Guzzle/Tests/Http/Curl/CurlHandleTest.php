@@ -2,15 +2,16 @@
 
 namespace Guzzle\Tests\Http\Curl;
 
-use Guzzle\Guzzle;
 use Guzzle\Common\Collection;
 use Guzzle\Common\Event;
+use Guzzle\Http\Utils;
 use Guzzle\Http\EntityBody;
 use Guzzle\Http\QueryString;
 use Guzzle\Http\Client;
 use Guzzle\Http\Message\Response;
 use Guzzle\Http\Message\RequestFactory;
 use Guzzle\Http\Curl\CurlHandle;
+use Guzzle\Http\Curl\CurlMulti;
 use Guzzle\Tests\Mock\MockObserver;
 
 /**
@@ -192,7 +193,7 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
             'z' => 'a'
         ));
 
-        $userAgent = Guzzle::getDefaultUserAgent();
+        $userAgent = Utils::getDefaultUserAgent();
         $auth = base64_encode('michael:123');
         $testFileSize = filesize($testFile);
 
@@ -207,8 +208,6 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_HTTPHEADER => array('Host: www.google.com', 'User-Agent: ' . $userAgent),
             )),
@@ -226,8 +225,6 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_PORT => 8080,
                 CURLOPT_HTTPHEADER => array('Host: 127.0.0.1:8080', 'User-Agent: ' . $userAgent),
@@ -241,11 +238,8 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_CONNECTTIMEOUT => 10,
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_HTTPHEADER => array('Host: www.google.com', 'User-Agent: ' . $userAgent),
-                CURLOPT_CUSTOMREQUEST => 'HEAD',
                 CURLOPT_NOBODY => 1
             )),
             // Send a GET using basic auth
@@ -258,8 +252,6 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_HTTPHEADER => array(
                     'Host: localhost',
@@ -295,8 +287,6 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_POSTFIELDS => 'x=y&z=a',
                 CURLOPT_HTTPHEADER => array (
@@ -326,8 +316,6 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
                 CURLOPT_READFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_INFILESIZE => filesize($testFile),
                 CURLOPT_HTTPHEADER => array (
@@ -357,8 +345,6 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_POST => 1,
                 CURLOPT_POSTFIELDS => 'x=y&a=b',
@@ -388,12 +374,10 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_POST => 1,
                 CURLOPT_POSTFIELDS => array(
-                    'file' => '@' . $testFile
+                    'file' => '@' . $testFile . ';type=application/xml'
                 ),
                 CURLOPT_HTTPHEADER => array (
                     'Host: localhost:8124',
@@ -423,8 +407,6 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_POST => 1,
                 CURLOPT_HTTPHEADER => array (
@@ -457,8 +439,6 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 CURLOPT_USERAGENT => $userAgent,
                 CURLOPT_WRITEFUNCTION => 'callback',
                 CURLOPT_HEADERFUNCTION => 'callback',
-                CURLOPT_PROGRESSFUNCTION => 'callback',
-                CURLOPT_NOPROGRESS => 0,
                 CURLOPT_ENCODING => '',
                 CURLOPT_POST => 1,
                 CURLOPT_HTTPHEADER => array (
@@ -493,7 +473,7 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
                 'User-Agent'       => '*',
                 'Content-Length'   => '0',
                 '!Expect'          => null,
-                'Content-Type'     => 'application/x-www-form-urlencoded',
+                '!Content-Type'     => '*',
                 '!Transfer-Encoding' => null
             )),
             // Send a PUT that does not have a body defined
@@ -546,10 +526,21 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
     public function testFactoryCreatesCurlBasedOnRequest($method, $url, $headers, $body, $options, $expectedHeaders = null)
     {
         $request = RequestFactory::getInstance()->create($method, $url, $headers, $body);
-        $handle = CurlHandle::factory($request);
+
+        $originalRequest = clone $request;
+        $curlTest = clone $request;
+        $handle = CurlHandle::factory($curlTest);
 
         $this->assertInstanceOf('Guzzle\\Http\\Curl\\CurlHandle', $handle);
-        $o = $request->getParams()->get('curl.last_options');
+        $o = $curlTest->getParams()->get('curl.last_options');
+
+        // Headers are case-insensitive
+        if (isset($o[CURLOPT_HTTPHEADER])) {
+            $o[CURLOPT_HTTPHEADER] = array_map('strtolower', $o[CURLOPT_HTTPHEADER]);
+        }
+        if (isset($options[CURLOPT_HTTPHEADER])) {
+            $options[CURLOPT_HTTPHEADER] = array_map('strtolower', $options[CURLOPT_HTTPHEADER]);
+        }
 
         $check = 0;
         foreach ($options as $key => $value) {
@@ -576,11 +567,14 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
             $requests = $this->getServer()->getReceivedRequests(true);
             $this->assertEquals($method, $requests[0]->getMethod());
 
-            $test = $this->filterHeaders($expectedHeaders, $requests[0]->getHeaders());
+            $test = $this->compareHeaders($expectedHeaders, $requests[0]->getHeaders());
             $this->assertFalse($test, $test . "\nSent: \n" . $request . "\n\n" . $requests[0]);
-        }
 
-        $request = null;
+            // Ensure only one Content-Length header is sent
+            if ($request->getHeader('Content-Length')) {
+                $this->assertEquals((string) $request->getHeader('Content-Length'), (string) $requests[0]->getHeader('Content-Length'));
+            }
+        }
     }
 
     /**
@@ -606,23 +600,18 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
         $client = new Client($this->getServer()->getUrl());
         $request = $client->put('/');
         $request->setBody(EntityBody::factory('test'), 'text/plain', false);
+        $request->getCurlOptions()->set('progress', true);
 
         $o = $this->getWildcardObserver($request);
         $request->send();
 
         // Make sure that the events were dispatched
-        $this->assertTrue($o->has('curl.callback.read'));
-        $this->assertTrue($o->has('curl.callback.write'));
         $this->assertTrue($o->has('curl.callback.progress'));
-
-        // Make sure that the data was sent through the event
-        $this->assertEquals('test', $o->getData('curl.callback.read', 'read'));
-        $this->assertEquals('hi', $o->getData('curl.callback.write', 'write'));
 
         // Ensure that the request was received exactly as intended
         $r = $this->getServer()->getReceivedRequests(true);
 
-        $this->assertEquals((string) $request, (string) $r[0]);
+        $this->assertEquals(strtolower($request), strtolower($r[0]));
         $this->assertFalse($r[0]->hasHeader('Transfer-Encoding'));
         $this->assertEquals(4, (string) $r[0]->getHeader('Content-Length'));
     }
@@ -654,6 +643,7 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
     {
         $this->getServer()->flush();
         $this->getServer()->enqueue("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi");
+
         $client = new Client($this->getServer()->getUrl());
         $request = $client->put('/');
         $request->setBody(EntityBody::factory('hi!'), 'text/plain', true);
@@ -668,11 +658,11 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
     /**
      * @covers Guzzle\Http\Curl\CurlHandle
      */
-    public function testSendsPostRequests()
+    public function testSendsPostRequestsWithFields()
     {
         $this->getServer()->flush();
         $this->getServer()->enqueue("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi");
-        // Create a new request using the same connection and POST
+
         $request = RequestFactory::getInstance()->create('POST', $this->getServer()->getUrl());
         $request->setClient(new Client());
         $request->addPostFields(array(
@@ -681,10 +671,46 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
         ));
         $request->send();
 
+        // Ensure the CURLOPT_POSTFIELDS option was set properly
+        $options = $request->getParams()->get('curl.last_options');
+        $this->assertEquals('a=b&c=ay%21%20~This%20is%20a%20test%2C%20isn%27t%20it%3F', $options[CURLOPT_POSTFIELDS]);
+
         // Make sure that the request was sent correctly
         $r = $this->getServer()->getReceivedRequests(true);
 
-        $this->assertEquals((string) $request, (string) $r[0]);
+        $this->assertEquals(strtolower($request), strtolower($r[0]));
+    }
+
+    /**
+     * @covers Guzzle\Http\Curl\CurlHandle
+     */
+    public function testSendsPostRequestsWithFiles()
+    {
+        $this->getServer()->flush();
+        $this->getServer()->enqueue("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi");
+
+        $request = RequestFactory::getInstance()->create('POST', $this->getServer()->getUrl());
+        $request->setClient(new Client());
+        $request->addPostFiles(array(
+            'foo' => __FILE__,
+        ));
+        $request->addPostFields(array(
+            'bar' => 'baz',
+            'arr' => array('a' => 1, 'b' => 2),
+        ));
+        $request->send();
+
+        // Ensure the CURLOPT_POSTFIELDS option was set properly
+        $options = $request->getParams()->get('curl.last_options');
+        $this->assertEquals(array(
+            'foo' => '@' . __FILE__ . ';type=text/x-php',
+            'bar' => 'baz',
+            'arr[a]' => '1',
+            'arr[b]' => '2',
+        ), $options[CURLOPT_POSTFIELDS]);
+
+        // Ensure that a Content-Length header was sent by cURL
+        $this->assertTrue($request->hasHeader('Content-Length'));
     }
 
     /**
@@ -696,11 +722,20 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
         $request->setClient(new Client('http://www.example.com', array(
             'curl.blacklist' => array('header.Accept', 'header.Foo', CURLOPT_ENCODING)
         )));
+        $request->setHeader('Foo', 'Bar');
         $handle = CurlHandle::factory($request);
         $headers = $handle->getOptions()->get(CURLOPT_HTTPHEADER);
         $this->assertTrue(in_array('Accept:', $headers));
         $this->assertTrue(in_array('Foo:', $headers));
         $this->assertFalse($handle->getOptions()->hasKey(CURLOPT_ENCODING));
+
+        $this->getServer()->flush();
+        $this->getServer()->enqueue("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi");
+        $request->send();
+
+        $r = $this->getServer()->getReceivedRequests(true);
+        $this->assertFalse($r[0]->hasHeader('Accept'));
+        $this->assertFalse($r[0]->hasHeader('Foo'));
     }
 
     /**
@@ -746,5 +781,44 @@ class CurlHandleTest extends \Guzzle\Tests\GuzzleTestCase
 
         $received = $this->getServer()->getReceivedRequests(true);
         $this->assertEquals(2, count($received));
+    }
+
+    public function testAllowsWireTransferInfoToBeDisabled()
+    {
+        $request = RequestFactory::getInstance()->create('PUT', $this->getServer()->getUrl());
+        $request->getCurlOptions()->set('disable_wire', true);
+        $handle = CurlHandle::factory($request);
+        $this->assertNull($handle->getOptions()->get(CURLOPT_STDERR));
+        $this->assertNull($handle->getOptions()->get(CURLOPT_VERBOSE));
+    }
+
+    public function testAddsCustomCurlOptions()
+    {
+        $request = RequestFactory::getInstance()->create('PUT', $this->getServer()->getUrl());
+        $request->getCurlOptions()->set(CURLOPT_TIMEOUT, 200);
+        $handle = CurlHandle::factory($request);
+        $this->assertEquals(200, $handle->getOptions()->get(CURLOPT_TIMEOUT));
+    }
+
+    public function testSendsPostUploadsWithContentDispositionHeaders()
+    {
+        $this->getServer()->flush();
+        $this->getServer()->enqueue("HTTP/1.1 200 OK\r\n\r\nContent-Length: 0\r\n\r\n");
+
+        $fileToUpload = dirname(dirname(__DIR__)) . DIRECTORY_SEPARATOR . 'TestData' . DIRECTORY_SEPARATOR . 'test_service.json';
+
+        $client = new Client($this->getServer()->getUrl());
+        $request = $client->post();
+        $request->addPostFile('foo', $fileToUpload, 'application/json');
+        $request->addPostFile('foo', __FILE__);
+
+        $request->send();
+        $requests = $this->getServer()->getReceivedRequests(true);
+        $body = (string) $requests[0]->getBody();
+
+        $this->assertContains('Content-Disposition: form-data; name="foo[0]"; filename="', $body);
+        $this->assertContains('Content-Type: application/json', $body);
+        $this->assertContains('Content-Type: text/x-php', $body);
+        $this->assertContains('Content-Disposition: form-data; name="foo[1]"; filename="', $body);
     }
 }

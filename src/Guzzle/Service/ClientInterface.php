@@ -2,32 +2,23 @@
 
 namespace Guzzle\Service;
 
-use Guzzle\Common\Collection;
+use Guzzle\Common\FromConfigInterface;
 use Guzzle\Common\Exception\InvalidArgumentException;
 use Guzzle\Http\ClientInterface as HttpClientInterface;
 use Guzzle\Service\Command\CommandInterface;
 use Guzzle\Service\Command\CommandSet;
 use Guzzle\Service\Description\ServiceDescription;
 use Guzzle\Service\Command\Factory\FactoryInterface as CommandFactoryInterface;
+use Guzzle\Service\Resource\ResourceIteratorFactoryInterface;
 
 /**
  * Client interface for executing commands on a web service.
  */
-interface ClientInterface extends HttpClientInterface
+interface ClientInterface extends HttpClientInterface, FromConfigInterface
 {
     const MAGIC_CALL_DISABLED = 0;
     const MAGIC_CALL_RETURN = 1;
     const MAGIC_CALL_EXECUTE = 2;
-
-    /**
-     * Basic factory method to create a new client.  Extend this method in
-     * subclasses to build more complex clients.
-     *
-     * @param array|Collection $config (optional) Configuration data
-     *
-     * @return ClientInterface
-     */
-    static function factory($config);
 
     /**
      * Get a command by name.  First, the client will see if it has a service
@@ -37,7 +28,7 @@ interface ClientInterface extends HttpClientInterface
      * are found, an InvalidArgumentException is thrown.
      *
      * @param string $name Name of the command to retrieve
-     * @param array $args (optional) Arguments to pass to the command
+     * @param array  $args Arguments to pass to the command
      *
      * @return CommandInterface
      * @throws InvalidArgumentException if no command can be found by name
@@ -61,11 +52,9 @@ interface ClientInterface extends HttpClientInterface
     /**
      * Set the service description of the client
      *
-     * @param ServiceDescription $service Service description that describes
-     *     all of the commands and information of the client
-     * @param bool $updateFactory (optional) Set to FALSE to not update the service
-     *     description based command factory if it is not already present on
-     *     the client
+     * @param ServiceDescription $service Service description
+     * @param bool $updateFactory Set to FALSE to not update the service description based
+     *                            command factory if it is not already on the client.
      *
      * @return ClientInterface
      */
@@ -79,13 +68,6 @@ interface ClientInterface extends HttpClientInterface
     function getDescription();
 
     /**
-     * Get the command factory associated with the client
-     *
-     * @return CommandFactoryInterface
-     */
-    function getCommandFactory();
-
-    /**
      * Set the command factory used to create commands by name
      *
      * @param CommandFactoryInterface $factory Command factory
@@ -93,4 +75,24 @@ interface ClientInterface extends HttpClientInterface
      * @return ClientInterface
      */
     function setCommandFactory(CommandFactoryInterface $factory);
+
+    /**
+     * Get a resource iterator from the client.
+     *
+     * @param string|CommandInterface $command         Command class or command name.
+     * @param array                   $commandOptions  Command options used when creating commands.
+     * @param array                   $iteratorOptions Iterator options passed to the iterator when it is instantiated.
+     *
+     * @return ResourceIteratorInterface
+     */
+    function getIterator($command, array $commandOptions = null, array $iteratorOptions = array());
+
+    /**
+     * Set the resource iterator factory associated with the client
+     *
+     * @param ResourceIteratorFactoryInterface $factory Resource iterator factory
+     *
+     * @return ClientInterface
+     */
+    function setResourceIteratorFactory(ResourceIteratorFactoryInterface $factory);
 }

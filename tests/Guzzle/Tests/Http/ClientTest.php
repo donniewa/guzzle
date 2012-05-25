@@ -2,10 +2,9 @@
 
 namespace Guzzle\Tests\Http;
 
-use Guzzle\Guzzle;
 use Guzzle\Common\Collection;
 use Guzzle\Common\Log\ClosureLogAdapter;
-use Guzzle\Http\UriTemplate;
+use Guzzle\Http\Parser\UriTemplate\UriTemplate;
 use Guzzle\Http\Message\Response;
 use Guzzle\Http\Message\RequestFactory;
 use Guzzle\Http\Plugin\ExponentialBackoffPlugin;
@@ -13,6 +12,7 @@ use Guzzle\Http\Plugin\LogPlugin;
 use Guzzle\Http\Plugin\MockPlugin;
 use Guzzle\Http\Curl\CurlMulti;
 use Guzzle\Http\Client;
+use Guzzle\Http\Utils;
 
 /**
  * @group server
@@ -162,7 +162,7 @@ class ClientTest extends \Guzzle\Tests\GuzzleTestCase
         ));
 
         $this->assertSame($client, $client->setUserAgent('Test/1.0Ab', true));
-        $this->assertEquals('Test/1.0Ab ' . Guzzle::getDefaultUserAgent(), $client->get()->getHeader('User-Agent'));
+        $this->assertEquals('Test/1.0Ab ' . Utils::getDefaultUserAgent(), $client->get()->getHeader('User-Agent'));
         $client->setUserAgent('Test/1.0Ab');
         $this->assertEquals('Test/1.0Ab', $client->get()->getHeader('User-Agent'));
     }
@@ -192,15 +192,16 @@ class ClientTest extends \Guzzle\Tests\GuzzleTestCase
      * @covers Guzzle\Http\Client::createRequest
      * @covers Guzzle\Http\Client::prepareRequest
      */
-    public function testClientAddsCacheKeyFiltersToRequests()
+    public function testClientAddsCustomCurlOptionsToRequests()
     {
         $client = new Client('http://www.test.com/', array(
             'api' => 'v1',
-            'cache.key_filter' => 'query=Date'
+            'curl.disable_wire' => true,
+            'curl.foo' => 'bar'
         ));
-
         $request = $client->createRequest();
-        $this->assertEquals('query=Date', $request->getParams()->get('cache.key_filter'));
+        $this->assertTrue($request->getCurlOptions()->get('disable_wire'));
+        $this->assertEquals('bar', $request->getCurlOptions()->get('foo'));
     }
 
     /**

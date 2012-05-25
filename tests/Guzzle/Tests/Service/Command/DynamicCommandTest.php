@@ -2,8 +2,8 @@
 
 namespace Guzzle\Tests\Service\Command;
 
-use Guzzle\Guzzle;
 use Guzzle\Common\Collection;
+use Guzzle\Http\Utils;
 use Guzzle\Service\Client;
 use Guzzle\Service\Command\DynamicCommand;
 use Guzzle\Service\Command\Factory\ServiceDescriptionFactory;
@@ -89,15 +89,6 @@ class DynamicCommandTest extends \Guzzle\Tests\GuzzleTestCase
 
     /**
      * @covers Guzzle\Service\Command\DynamicCommand
-     * @expectedException InvalidArgumentException
-     */
-    public function testRequiresApiCommand()
-    {
-        $command = new DynamicCommand();
-    }
-
-    /**
-     * @covers Guzzle\Service\Command\DynamicCommand
      */
     public function testBuildsUsingPathParametersAndAppendSlashPrepend()
     {
@@ -118,7 +109,7 @@ class DynamicCommandTest extends \Guzzle\Tests\GuzzleTestCase
         $this->assertEquals(
             "HEAD /hi_key HTTP/1.1\r\n" .
             "Host: www.example.com\r\n" .
-            "User-Agent: " . Guzzle::getDefaultUserAgent() . "\r\n" .
+            "User-Agent: " . Utils::getDefaultUserAgent() . "\r\n" .
             "\r\n", (string) $request);
     }
 
@@ -151,7 +142,7 @@ class DynamicCommandTest extends \Guzzle\Tests\GuzzleTestCase
         $this->assertEquals(
             "PUT /?test=abc&i=test HTTP/1.1\r\n" .
             "Host: www.tazmania.com\r\n" .
-            "User-Agent: " . Guzzle::getDefaultUserAgent() . "\r\n" .
+            "User-Agent: " . Utils::getDefaultUserAgent() . "\r\n" .
             "Expect: 100-Continue\r\n" .
             "Content-Length: 29\r\n" .
             "X-Custom: haha\r\n" .
@@ -173,7 +164,7 @@ class DynamicCommandTest extends \Guzzle\Tests\GuzzleTestCase
         $this->assertEquals(
             "PUT /?test=abc&i=test HTTP/1.1\r\n" .
             "Host: www.tazmania.com\r\n" .
-            "User-Agent: " . Guzzle::getDefaultUserAgent() . "\r\n" .
+            "User-Agent: " . Utils::getDefaultUserAgent() . "\r\n" .
             "Expect: 100-Continue\r\n" .
             "Content-Length: 29\r\n" .
             "X-Custom: haha\r\n" .
@@ -199,7 +190,7 @@ class DynamicCommandTest extends \Guzzle\Tests\GuzzleTestCase
             array(
                 'test_path' => new ApiCommand(array(
                     'method' => 'GET',
-                    'path' => '/test',
+                    'uri'    => '/test',
                 ))
             )
         );
@@ -220,7 +211,7 @@ class DynamicCommandTest extends \Guzzle\Tests\GuzzleTestCase
             array(
                 'test_path' => new ApiCommand(array(
                     'method' => 'GET',
-                    'path' => 'test/abc',
+                    'uri'    => 'test/abc',
                 ))
             )
         );

@@ -24,6 +24,7 @@ class BatchQueuePluginTest extends \Guzzle\Tests\GuzzleTestCase
     /**
      * @covers Guzzle\Http\Plugin\BatchQueuePlugin::count
      * @covers Guzzle\Http\Plugin\BatchQueuePlugin::onRequestCreate
+     * @covers Guzzle\Http\Plugin\BatchQueuePlugin::addRequest
      */
     public function testAddsRequestToQueue()
     {
@@ -93,13 +94,15 @@ class BatchQueuePluginTest extends \Guzzle\Tests\GuzzleTestCase
 
         // Explicitly call flush to send the queued requests
         $plugin->flush();
-        $this->assertEquals(count($requests), count($this->getServer()->getReceivedRequests()));
+        $received = $this->getServer()->getReceivedRequests();
+        $this->assertEquals(count($requests), count($received));
         $this->assertEquals(0, count($plugin));
     }
 
     /**
      * @covers Guzzle\Http\Plugin\BatchQueuePlugin::__construct
      * @covers Guzzle\Http\Plugin\BatchQueuePlugin::onRequestCreate
+     * @covers Guzzle\Http\Plugin\BatchQueuePlugin::addRequest
      */
     public function testImplicitlyFlushesRequests()
     {
@@ -114,18 +117,19 @@ class BatchQueuePluginTest extends \Guzzle\Tests\GuzzleTestCase
         ));
 
         $plugin->onRequestCreate(new Event(array(
-            'request' => $client->get('/')
+            'request' => $client->get('/1')
         )));
 
         $plugin->onRequestCreate(new Event(array(
-            'request' => $client->get('/')
+            'request' => $client->get('/2')
         )));
 
         $this->assertEquals(0, count($plugin));
-        $this->assertEquals(2, count($this->getServer()->getReceivedRequests()));
+        $received = $this->getServer()->getReceivedRequests();
+        $this->assertEquals(2, count($received));
 
         $plugin->onRequestCreate(new Event(array(
-            'request' => $client->get('/')
+            'request' => $client->get('/3')
         )));
 
         $this->assertEquals(1, count($plugin));
@@ -133,6 +137,7 @@ class BatchQueuePluginTest extends \Guzzle\Tests\GuzzleTestCase
 
     /**
      * @covers Guzzle\Http\Plugin\BatchQueuePlugin::onRequestCreate
+     * @covers Guzzle\Http\Plugin\BatchQueuePlugin::addRequest
      * @covers Guzzle\Http\Plugin\BatchQueuePlugin::onRequestBeforeSend
      */
     public function testWorksUsingEvents()

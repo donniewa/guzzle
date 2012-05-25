@@ -25,10 +25,15 @@ class MockPlugin extends AbstractHasDispatcher implements EventSubscriberInterfa
     protected $temporary = false;
 
     /**
+     * @var array Array of requests that were mocked
+     */
+    protected $received = array();
+
+    /**
      * Constructor
      *
-     * @param array $responses (optional) Array of responses to queue
-     * @param bool $temporary (optional) Set to TRUE to remove the plugin when
+     * @param array $responses Array of responses to queue
+     * @param bool  $temporary Set to TRUE to remove the plugin when
      *      the queue is empty
      */
     public function __construct(array $responses = null, $temporary = false)
@@ -60,7 +65,7 @@ class MockPlugin extends AbstractHasDispatcher implements EventSubscriberInterfa
     /**
      * Get a mock response from a file
      *
-     * @param string $file File to retreive a mock response from
+     * @param string $file File to retrieve a mock response from
      *
      * @return Response
      * @throws InvalidArgumentException if the file is not found
@@ -163,6 +168,24 @@ class MockPlugin extends AbstractHasDispatcher implements EventSubscriberInterfa
     }
 
     /**
+     * Clear the array of received requests
+     */
+    public function flush()
+    {
+        $this->received = array();
+    }
+
+    /**
+     * Get an array of requests that were mocked by this plugin
+     *
+     * @return array
+     */
+    public function getReceivedRequests()
+    {
+        return $this->received;
+    }
+
+    /**
      * Called when a request completes
      *
      * @param Event $event
@@ -172,6 +195,7 @@ class MockPlugin extends AbstractHasDispatcher implements EventSubscriberInterfa
         if (!empty($this->queue)) {
             $request = $event['request'];
             $this->dequeue($request);
+            $this->received[] = $request;
             // Detach the filter from the client so it's a one-time use
             if ($this->temporary && empty($this->queue) && $request->getClient()) {
                 $request->getClient()->getEventDispatcher()->removeSubscriber($this);

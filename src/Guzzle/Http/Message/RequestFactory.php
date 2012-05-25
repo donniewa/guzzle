@@ -4,8 +4,8 @@ namespace Guzzle\Http\Message;
 
 use Guzzle\Common\Collection;
 use Guzzle\Http\EntityBody;
-use Guzzle\Http\QueryString;
 use Guzzle\Http\Url;
+use Guzzle\Http\Parser\ParserRegistry;
 
 /**
  * Default HTTP request factory used to create the default
@@ -15,30 +15,17 @@ use Guzzle\Http\Url;
 class RequestFactory implements RequestFactoryInterface
 {
     /**
-     * @var Standard request headers
-     */
-    protected static $requestHeaders = array(
-        'accept', 'accept-charset', 'accept-encoding', 'accept-language',
-        'authorization', 'cache-control', 'connection', 'cookie',
-        'content-length', 'content-type', 'date', 'expect', 'from', 'host',
-        'if-match', 'if-modified-since', 'if-none-match', 'if-range',
-        'if-unmodified-since', 'max-forwards', 'pragma', 'proxy-authorization',
-        'range', 'referer', 'te', 'transfer-encoding', 'upgrade', 'user-agent',
-        'via', 'warning'
-    );
-
-    /**
      * @var RequestFactory Singleton instance of the default request factory
      */
     protected static $instance;
 
     /**
-     * @var string Class to instantiate for GET, HEAD, and DELETE requests
+     * @var string Class to instantiate for requests with no body
      */
     protected $requestClass = 'Guzzle\\Http\\Message\\Request';
 
     /**
-     * @var string Class to instantiate for POST and PUT requests
+     * @var string Class to instantiate for requests with a body
      */
     protected $entityEnclosingRequestClass = 'Guzzle\\Http\\Message\\EntityEnclosingRequest';
 
@@ -50,107 +37,12 @@ class RequestFactory implements RequestFactoryInterface
     public static function getInstance()
     {
         // @codeCoverageIgnoreStart
-        if (!self::$instance) {
-            self::$instance = new self();
+        if (!static::$instance) {
+            static::$instance = new static();
         }
         // @codeCoverageIgnoreEnd
 
-        return self::$instance;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function parseMessage($message)
-    {
-        if (!$message) {
-            return false;
-        }
-
-        $headers = new Collection();
-        $scheme = $host = $body = $method = $user = $pass = $query = $port = $version = $protocol = '';
-        $path = '/';
-
-        // Inspired by https://github.com/kriswallsmith/Buzz/blob/message-interfaces/lib/Buzz/Message/Parser/Parser.php#L16
-        $lines = preg_split('/(\\r?\\n)/', $message, -1, PREG_SPLIT_DELIM_CAPTURE);
-        for ($i = 0, $c = count($lines); $i < $c; $i += 2) {
-
-            $line = $lines[$i];
-
-            // If two line breaks were encountered, then this is the body
-            if (empty($line)) {
-                $body = implode('', array_slice($lines, $i + 2));
-                break;
-            }
-
-            // Parse message headers
-            $matches = array();
-            if (!$method && preg_match('#^(?P<method>[A-Za-z]+)\s+(?P<path>/.*)\s+(?P<protocol>\w+)/(?P<version>\d\.\d)\s*$#i', $line, $matches)) {
-                $method = strtoupper($matches['method']);
-                $protocol = strtoupper($matches['protocol']);
-                $path = $matches['path'];
-                $version = $matches['version'];
-                $scheme = 'http';
-            } else if (strpos($line, ':')) {
-                list($key, $value) = explode(':', $line, 2);
-                $key = trim($key);
-                // Normalize standard HTTP headers
-                if (in_array(strtolower($key), self::$requestHeaders)) {
-                    $key = str_replace(' ', '-', ucwords(str_replace('-', ' ', $key)));
-                }
-                // Headers are case insensitive
-                $headers->add($key, trim($value));
-            }
-        }
-
-        // Check for the Host header
-        if (isset($headers['Host'])) {
-            $host = $headers['Host'];
-        }
-
-        if (strpos($host, ':')) {
-            list($host, $port) = array_map('trim', explode(':', $host));
-            if ($port == 443) {
-                $scheme = 'https';
-            }
-        } else {
-            $port = '';
-        }
-
-        // Check for basic authorization
-        $auth = isset($headers['Authorization']) ? $headers['Authorization'] : '';
-
-        if ($auth) {
-            list($type, $data) = explode(' ', $auth);
-            if (strtolower($type) == 'basic') {
-                $data = base64_decode($data);
-                list($user, $pass) = explode(':', $data);
-            }
-        }
-
-        // Check if a query is present
-        $qpos = strpos($path, '?');
-        if ($qpos) {
-            $query = substr($path, $qpos);
-            $path = substr($path, 0, $qpos);
-        }
-
-        return array(
-            'method' => $method,
-            'protocol' => $protocol,
-            'protocol_version' => $version,
-            'parts' => array(
-                'scheme' => $scheme,
-                'host' => $host,
-                'port' => $port,
-                'user' => $user,
-                'pass' => $pass,
-                'path' => $path,
-                'query' => $query
-            ),
-            'headers' => $headers->getAll(),
-            'body' => $body
-        );
+        return static::$instance;
     }
 
     /**
@@ -158,21 +50,21 @@ class RequestFactory implements RequestFactoryInterface
      */
     public function fromMessage($message)
     {
-        $parsed = $this->parseMessage($message);
+        $parsed = ParserRegistry::get('message')->parseRequest($message);
 
         if (!$parsed) {
             return false;
         }
 
-        $request = $this->fromParts($parsed['method'], $parsed['parts'],
+        $request = $this->fromParts($parsed['method'], $parsed['request_url'],
             $parsed['headers'], $parsed['body'], $parsed['protocol'],
-            $parsed['protocol_version']);
+            $parsed['version']);
 
         // EntityEnclosingRequest adds an "Expect: 100-Continue" header when
         // using a raw request body for PUT or POST requests. This factory
         // method should accurately reflect the message, so here we are
         // removing the Expect header if one was not supplied in the message.
-        if (!isset($parsed['headers']['Expect'])) {
+        if (!isset($parsed['headers']['Expect']) && !isset($parsed['headers']['expect'])) {
             $request->removeHeader('Expect');
         }
 
@@ -182,9 +74,9 @@ class RequestFactory implements RequestFactoryInterface
     /**
      * {@inheritdoc}
      */
-    public function fromParts($method, array $parts, $headers = null, $body = null, $protocol = 'HTTP', $protocolVersion = '1.1')
+    public function fromParts($method, array $urlParts, $headers = null, $body = null, $protocol = 'HTTP', $protocolVersion = '1.1')
     {
-        return $this->create($method, Url::buildUrl($parts, true), $headers, $body)
+        return $this->create($method, Url::buildUrl($urlParts, true), $headers, $body)
                     ->setProtocolVersion($protocolVersion);
     }
 
@@ -199,24 +91,45 @@ class RequestFactory implements RequestFactoryInterface
             if ($body) {
                 $request->setResponseBody(EntityBody::factory($body));
             }
-        } else {
-            $c = $this->entityEnclosingRequestClass;
-            $request = new $c($method, $url, $headers);
 
-            if ($body) {
-                if ($method == 'POST' && (is_array($body) || $body instanceof Collection)) {
-                    $request->addPostFields($body);
-                } else if (is_resource($body) || $body instanceof EntityBody) {
-                    $request->setBody($body, (string) $request->getHeader('Content-Type'));
-                } else {
-                    $request->setBody((string) $body, (string) $request->getHeader('Content-Type'));
+            return $request;
+        }
+
+        $c = $this->entityEnclosingRequestClass;
+        $request = new $c($method, $url, $headers);
+
+        if ($body) {
+
+            $isChunked = (string) $request->getHeader('Transfer-Encoding') == 'chunked';
+
+            if ($method == 'POST' && (is_array($body) || $body instanceof Collection)) {
+
+                // Normalize PHP style cURL uploads with a leading '@' symbol
+                $files = array();
+                foreach ($body as $key => $value) {
+                    if (is_string($value) && strpos($value, '@') === 0) {
+                        $files[$key] = $value;
+                        unset($body[$key]);
+                    }
                 }
-            }
 
-            // Fix chunked transfers based on the passed headers
-            if (isset($headers['Transfer-Encoding']) && $headers['Transfer-Encoding'] == 'chunked') {
-                $request->removeHeader('Content-Length')
-                        ->setHeader('Transfer-Encoding', 'chunked');
+                // Add the fields if they are still present and not all files
+                if (count($body) > 0) {
+                    $request->addPostFields($body);
+                }
+                // Add any files that were prefixed with '@'
+                if (!empty($files)) {
+                    $request->addPostFiles($files);
+                }
+
+                if ($isChunked) {
+                    $request->setHeader('Transfer-Encoding', 'chunked');
+                }
+
+            } elseif (is_resource($body) || $body instanceof EntityBody) {
+                $request->setBody($body, (string) $request->getHeader('Content-Type'), $isChunked);
+            } else {
+                $request->setBody((string) $body, (string) $request->getHeader('Content-Type'), $isChunked);
             }
         }
 

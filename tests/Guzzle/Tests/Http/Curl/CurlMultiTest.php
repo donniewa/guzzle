@@ -163,7 +163,6 @@ class CurlMultiTest extends \Guzzle\Tests\GuzzleTestCase
             "Content-Type: text/html; charset=utf-8\r\n" .
             "Content-Length: 4\r\n" .
             "Server: Jetty(6.1.3)\r\n\r\n" .
-            "\r\n" .
             "data"
         ));
 
@@ -263,17 +262,16 @@ class CurlMultiTest extends \Guzzle\Tests\GuzzleTestCase
             $request = RequestFactory::getInstance()->create('GET', 'http://127.0.0.1:9876/');
             $request->setClient(new Client());
             $request->getCurlOptions()->set(CURLOPT_FRESH_CONNECT, true);
-            $request->getCurlOptions()->set(CURLOPT_TIMEOUT, 0);
-            $request->getCurlOptions()->set(CURLOPT_CONNECTTIMEOUT, 1);
+            $request->getCurlOptions()->set(CURLOPT_FORBID_REUSE, true);
+            $request->getCurlOptions()->set(CURLOPT_CONNECTTIMEOUT_MS, 5);
             $request->send();
             $this->fail('CurlException not thrown');
         } catch (CurlException $e) {
             $m = $e->getMessage();
-            $this->assertContains('[curl] 7:', $m);
+            $this->assertContains('[curl] ', $m);
             $this->assertContains('[url] http://127.0.0.1:9876/', $m);
             $this->assertContains('[debug] ', $m);
             $this->assertContains('[info] array (', $m);
-            $this->assertContains('Connection refused', $m);
         }
     }
 
@@ -334,28 +332,29 @@ class CurlMultiTest extends \Guzzle\Tests\GuzzleTestCase
 
         $requests = array(
             $client->get(),
-            $client->get(),
             $client->get()
         );
 
-        $callback = function(Event $event) use ($client) {
+        $sendHeadFunction = function($event) use ($client) {
+            $client->head()->send();
+        };
+
+        // Sends 2 new requests in the middle of a CurlMulti loop while other requests
+        // are completing.  This causes the scope of the multi handle to go up.
+        $callback = function(Event $event) use ($client, $sendHeadFunction) {
             $client->getConfig()->set('called', $client->getConfig('called') + 1);
-            $request = $client->get();
             if ($client->getConfig('called') <= 2) {
-                $request->getEventDispatcher()->addListener('request.complete', function(Event $event) use ($client) {
-                    $client->head()->send();
-                });
+                $request = $client->get();
+                $request->getEventDispatcher()->addListener('request.complete', $sendHeadFunction);
+                $request->send();
             }
-            $request->send();
         };
 
         $requests[0]->getEventDispatcher()->addListener('request.complete', $callback);
-        $requests[1]->getEventDispatcher()->addListener('request.complete', $callback);
-        $requests[2]->getEventDispatcher()->addListener('request.complete', $callback);
 
         $client->send($requests);
 
-        $this->assertEquals(8, count($this->getServer()->getReceivedRequests(false)));
+        $this->assertEquals(4, count($this->getServer()->getReceivedRequests(false)));
     }
 
     /**
@@ -560,5 +559,19 @@ class CurlMultiTest extends \Guzzle\Tests\GuzzleTestCase
         } catch (CurlException $e) {
             $this->assertEquals('Unexpected cURL error: 255', $e->getMessage());
         }
+    }
+
+    /**
+     * @covers Guzzle\Http\Curl\curlMulti::add
+     */
+    public function testAddsAsyncRequestsNormallyWhenNotSending()
+    {
+        $multi = new CurlMulti();
+        $request = new Request('GET', 'http://www.google.com/');
+        $multi->add($request, true);
+
+        // Ensure that the request was added at the correct next scope
+        $requests = $this->readAttribute($multi, 'requests');
+        $this->assertEquals(array($request), $requests[0]);
     }
 }

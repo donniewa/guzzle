@@ -3,8 +3,8 @@
 namespace Guzzle\Service\Command;
 
 use Guzzle\Common\Collection;
-use Guzzle\Common\NullObject;
 use Guzzle\Common\Exception\BadMethodCallException;
+use Guzzle\Common\Exception\InvalidArgumentException;
 use Guzzle\Http\Message\Response;
 use Guzzle\Http\Message\RequestInterface;
 use Guzzle\Service\Description\ApiCommand;
@@ -41,36 +41,77 @@ abstract class AbstractCommand extends Collection implements CommandInterface
     protected $apiCommand;
 
     /**
+     * @var mixed callable
+     */
+    protected $onComplete;
+
+    /**
+     * @var Inspector
+     */
+    protected $inspector;
+
+    /**
      * Constructor
      *
-     * @param array|Collection $parameters (optional) Collection of parameters
+     * @param array|Collection $parameters Collection of parameters
      *      to set on the command
-     * @param ApiCommand $apiCommand (optional) Command definition from description
+     * @param ApiCommand $apiCommand Command definition from description
      */
     public function __construct($parameters = null, ApiCommand $apiCommand = null)
     {
         parent::__construct($parameters);
 
-        // Add arguments and validate the command
         if ($apiCommand) {
+
             $this->apiCommand = $apiCommand;
-            Inspector::getInstance()->validateConfig($apiCommand->getParams(), $this, false);
+
         } else {
-            Inspector::getInstance()->validateClass(get_class($this), $this, false);
+
+            // If this is a concrete command, then build an ApiCommand object
+            $className = get_class($this);
+
+            // Determine the name of the command based on the relation to the
+            // client that executes the command
+            $this->apiCommand = new ApiCommand(array(
+                'name'   => str_replace('\\_', '.', Inflector::snake(substr($className, strpos($className, 'Command') + 8))),
+                'class'  => $className,
+                'params' => $this->getInspector()->getApiParamsForClass($className)
+            ));
         }
 
-        if (!$this->get('headers') instanceof Collection) {
-            $this->set('headers', new Collection((array) $this->get('headers')));
+        // Set default and static values on the command
+        $this->getInspector()->initConfig($this->apiCommand->getParams(), $this);
+
+        $headers = $this->get('headers');
+        if (!$headers instanceof Collection) {
+            $this->set('headers', new Collection((array) $headers));
+        }
+
+        // You can set a command.on_complete option in your parameters as a
+        // convenience method for setting an onComplete function
+        $onComplete = $this->get('command.on_complete');
+        if ($onComplete) {
+            $this->remove('command.on_complete');
+            $this->setOnComplete($onComplete);
         }
 
         $this->init();
     }
 
     /**
+     * Custom clone behavior
+     */
+    public function __clone()
+    {
+        $this->request = null;
+        $this->result = null;
+    }
+
+    /**
      * Enables magic methods for setting parameters.
      *
      * @param string $method Name of the parameter to set
-     * @param array  $args   (optional) Arguments to pass to the command
+     * @param array  $args   Arguments to pass to the command
      *
      * @return AbstractCommand
      * @throws BadMethodCallException when a parameter doesn't exist
@@ -91,6 +132,7 @@ abstract class AbstractCommand extends Collection implements CommandInterface
             // If the parameter exists, set it
             if (array_key_exists($key, $this->apiCommand->getParams())) {
                 $this->set($key, $args[0]);
+
                 return $this;
             }
         }
@@ -106,32 +148,44 @@ abstract class AbstractCommand extends Collection implements CommandInterface
      */
     public function getName()
     {
-        if ($this->apiCommand) {
-            return $this->apiCommand->getName();
-        } else {
-            // Determine the name of the command based on the relation to the
-            // client that executes the command
-            $parts = explode('\\', get_class($this));
-            while (array_shift($parts) !== 'Command');
-
-            return implode('.', array_map(array('Guzzle\\Service\\Inflector', 'snake'), $parts));
-        }
+        return $this->apiCommand->getName();
     }
 
     /**
      * Get the API command information about the command
      *
-     * @return ApiCommand|NullObject
+     * @return ApiCommand
      */
     public function getApiCommand()
     {
-        return $this->apiCommand ?: new NullObject();
+        return $this->apiCommand;
     }
 
     /**
-     * Execute the command
+     * Specify a callable to execute when the command completes
+     *
+     * @param mixed $callable Callable to execute when the command completes.
+     *     The callable must accept a {@see CommandInterface} object as the
+     *     only argument.
      *
      * @return Command
+     * @throws InvalidArgumentException
+     */
+    public function setOnComplete($callable)
+    {
+        if (!is_callable($callable)) {
+            throw new InvalidArgumentException('The onComplete function must be callable');
+        }
+
+        $this->onComplete = $callable;
+
+        return $this;
+    }
+
+    /**
+     * Execute the command and return the result
+     *
+     * @return mixed Returns the result of {@see AbstractCommand::execute}
      * @throws CommandException if a client has not been associated with the command
      */
     public function execute()
@@ -140,9 +194,7 @@ abstract class AbstractCommand extends Collection implements CommandInterface
             throw new CommandException('A Client object must be associated with the command before it can be executed from the context of the command.');
         }
 
-        $this->client->execute($this);
-
-        return $this;
+        return $this->client->execute($this);
     }
 
     /**
@@ -214,9 +266,27 @@ abstract class AbstractCommand extends Collection implements CommandInterface
 
         if (null === $this->result) {
             $this->process();
+            // Call the onComplete method if one is set
+            if ($this->onComplete) {
+                call_user_func($this->onComplete, $this);
+            }
         }
 
         return $this->result;
+    }
+
+    /**
+     * Set the result of the command
+     *
+     * @param mixed $result Result to set
+     *
+     * @return self
+     */
+    public function setResult($result)
+    {
+        $this->result = $result;
+
+        return $this;
     }
 
     /**
@@ -253,12 +323,10 @@ abstract class AbstractCommand extends Collection implements CommandInterface
                 throw new CommandException('A Client object must be associated with the command before it can be prepared.');
             }
 
-            // Fail on missing required arguments
-            if ($this->apiCommand) {
-                Inspector::getInstance()->validateConfig($this->apiCommand->getParams(), $this, true);
-            } else {
-                Inspector::getInstance()->validateClass(get_class($this), $this, true);
-            }
+            // Fail on missing required arguments, and change parameters via filters
+            // Perform a non-idempotent validation on the parameters.  Options that
+            // change during validation will persist (e.g. injection, filters).
+            $this->getInspector()->validateConfig($this->apiCommand->getParams(), $this, true);
 
             $this->build();
 
@@ -286,6 +354,34 @@ abstract class AbstractCommand extends Collection implements CommandInterface
     }
 
     /**
+     * Set the Inspector to use with the command
+     *
+     * @param Inspector $inspector Inspector to use for config validation
+     *
+     * @return AbstractCommand
+     */
+    public function setInspector(Inspector $inspector)
+    {
+        $this->inspector = $inspector;
+
+        return $this;
+    }
+
+    /**
+     * Get the Inspector used with the Command
+     *
+     * @return Inspector
+     */
+    protected function getInspector()
+    {
+        if (!$this->inspector) {
+            $this->inspector = Inspector::getInstance();
+        }
+
+        return $this->inspector;
+    }
+
+    /**
      * Initialize the command (hook to be implemented in subclasses)
      */
     protected function init() {}
@@ -309,8 +405,10 @@ abstract class AbstractCommand extends Collection implements CommandInterface
         // Uses the response object by default
         $this->result = $this->getRequest()->getResponse();
 
+        $contentType = $this->result->getContentType();
+
         // Is the body an JSON document?  If so, set the result to be an array
-        if (stripos($this->result->getContentType(), 'application/json') !== false) {
+        if (stripos($contentType, 'json') !== false) {
             $body = trim($this->result->getBody(true));
             if ($body) {
                 $decoded = json_decode($body, true);
@@ -320,7 +418,7 @@ abstract class AbstractCommand extends Collection implements CommandInterface
 
                 $this->result = $decoded;
             }
-        } else if (preg_match('/^\s*(text\/xml|application\/xml).*$/', $this->result->getContentType())) {
+        } if (stripos($contentType, 'xml') !== false) {
             // Is the body an XML document?  If so, set the result to be a SimpleXMLElement
             // If the body is available, then parse the XML
             $body = trim($this->result->getBody(true));

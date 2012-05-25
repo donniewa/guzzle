@@ -2,11 +2,11 @@
 
 namespace Guzzle\Tests\Message;
 
-use Guzzle\Guzzle;
 use Guzzle\Common\Collection;
 use Guzzle\Common\Exception\InvalidArgumentException;
 use Guzzle\Http\EntityBody;
 use Guzzle\Http\HttpException;
+use Guzzle\Http\Utils;
 use Guzzle\Http\Exception\BadResponseException;
 use Guzzle\Http\Message\Response;
 use Guzzle\Http\Message\RequestFactory;
@@ -140,11 +140,10 @@ class ResponseTest extends \Guzzle\Tests\GuzzleTestCase
 
     /**
      * @covers Guzzle\Http\Message\Response::fromMessage
-     * @expectedException Guzzle\Common\Exception\InvalidArgumentException
      */
     public function testFactoryRequiresMessage()
     {
-        $response = Response::fromMessage('');
+        $this->assertFalse(Response::fromMessage(''));
     }
 
     /**
@@ -328,7 +327,7 @@ class ResponseTest extends \Guzzle\Tests\GuzzleTestCase
         $this->response->removeHeader('Date');
         $this->assertNull($this->response->getAge());
 
-        $this->response->setHeader('Date', Guzzle::getHttpDate(strtotime('-1 minute')));
+        $this->response->setHeader('Date', Utils::getHttpDate(strtotime('-1 minute')));
         // If the test runs slowly, still pass with a +5 second allowance
         $this->assertTrue($this->response->getAge() - 60 <= 5);
         $this->assertNull($this->response->getAge(true));
@@ -667,17 +666,6 @@ class ResponseTest extends \Guzzle\Tests\GuzzleTestCase
             'Content-Length' => 0
         )), EntityBody::factory($resource, 0))->canCache());
         unlink($tmp);
-
-        // When an HTTPS request is sent and the Cache-Control directive does
-        // not include a 'public' value, then the response is not to be cached
-        $request = RequestFactory::getInstance()->create('GET', 'https://www.test.com/');
-        $response = new Response(200);
-        $response->setRequest($request);
-        $this->assertFalse($response->canCache());
-
-        // This response can be cache because it is public
-        $response->setHeader('Cache-Control', 'public');
-        $this->assertTrue($response->canCache());
     }
 
     /**
@@ -700,17 +688,17 @@ class ResponseTest extends \Guzzle\Tests\GuzzleTestCase
         // Uses the response's max-age
         $this->assertEquals(120, $this->getResponse(200, array(
             'Cache-Control' => 'max-age=120',
-            'Expires' => Guzzle::getHttpDate('+1 day')
+            'Expires' => Utils::getHttpDate('+1 day')
         ))->getMaxAge());
 
         // Uses the Expires date
         $this->assertGreaterThanOrEqual(82400, $this->getResponse(200, array(
-            'Expires' => Guzzle::getHttpDate('+1 day')
+            'Expires' => Utils::getHttpDate('+1 day')
         ))->getMaxAge());
 
         // Uses the Expires date
         $this->assertGreaterThanOrEqual(82400, $this->getResponse(200, array(
-            'Expires' => Guzzle::getHttpDate('+1 day')
+            'Expires' => Utils::getHttpDate('+1 day')
         ))->getMaxAge());
     }
 
@@ -756,7 +744,7 @@ class ResponseTest extends \Guzzle\Tests\GuzzleTestCase
      */
     public function testHandlesProtocols()
     {
-        $this->assertSame($this->response, $this->response->setProtocol('HTTP/1.0'));
+        $this->assertSame($this->response, $this->response->setProtocol('HTTP', '1.0'));
         $this->assertEquals('HTTP', $this->response->getProtocol());
         $this->assertEquals('1.0', $this->response->getProtocolVersion());
     }

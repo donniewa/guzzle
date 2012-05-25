@@ -18,8 +18,8 @@ class EntityBody extends Stream
     /**
      * Create a new EntityBody based on the input type
      *
-     * @param resource|string|EntityBody $resource (optional) Entity body data
-     * @param int $size (optional) Size of the data contained in the resource
+     * @param resource|string|EntityBody $resource Entity body data
+     * @param int                        $size     Size of the data contained in the resource
      *
      * @return EntityBody
      * @throws InvalidArgumentException if the $resource arg is not a resource or string
@@ -28,13 +28,16 @@ class EntityBody extends Stream
     {
         if (is_resource($resource)) {
             return new static($resource, $size);
-        } else if (is_string($resource)) {
+        } elseif (is_string($resource)) {
             $stream = fopen('php://temp', 'r+');
             fwrite($stream, $resource);
             rewind($stream);
+
             return new static($stream);
-        } else if ($resource instanceof self) {
+        } elseif ($resource instanceof self) {
             return $resource;
+        } elseif (is_array($resource)) {
+            return self::factory(http_build_query($resource));
         }
 
         throw new InvalidArgumentException('Invalid resource type');
@@ -45,7 +48,7 @@ class EntityBody extends Stream
      * compression.  The uncompressed stream is then closed, and the compressed
      * stream then becomes the wrapped stream.
      *
-     * @param string $filter (optional) Compression filter
+     * @param string $filter Compression filter
      *
      * @return bool Returns TRUE on success or FALSE on failure
      */
@@ -61,7 +64,7 @@ class EntityBody extends Stream
      * Uncompress a deflated string.  Once uncompressed, the uncompressed
      * string is then used as the wrapped stream.
      *
-     * @param string $filter (optional) De-compression filter
+     * @param string $filter De-compression filter
      *
      * @return bool Returns TRUE on success or FALSE on failure
      */
@@ -118,9 +121,9 @@ class EntityBody extends Stream
     /**
      * Get an MD5 checksum of the stream's contents
      *
-     * @param bool $rawOutput (optional) Whether or not to use raw output
-     * @param bool $base64Encode (optional) whether or not to base64 encode
-     *      raw output (only if raw output is true)
+     * @param bool $rawOutput    Whether or not to use raw output
+     * @param bool $base64Encode Whether or not to base64 encode raw output
+     *                           (only if raw output is true)
      *
      * @return bool|string Returns an MD5 string on success or FALSE on failure
      */
@@ -171,8 +174,8 @@ class EntityBody extends Stream
     /**
      * Handles compression or uncompression of stream data
      *
-     * @param $filter Name of the filter to use (zlib.deflate or zlib.inflate)
-     * @param int $offsetStart (optional) Number of bytes to skip from start
+     * @param string $filter      Name of the filter to use (zlib.deflate or zlib.inflate)
+     * @param int    $offsetStart Number of bytes to skip from start
      *
      * @return bool Returns TRUE on success or FALSE on failure
      */

@@ -2,12 +2,11 @@
 
 namespace Guzzle\Tests\Http\Message;
 
-use Guzzle\Guzzle;
 use Guzzle\Common\Collection;
 use Guzzle\Http\EntityBody;
-use Guzzle\Http\HttpException;
 use Guzzle\Http\Url;
 use Guzzle\Http\Client;
+use Guzzle\Http\Utils;
 use Guzzle\Http\Plugin\ExponentialBackoffPlugin;
 use Guzzle\Http\Message\RequestInterface;
 use Guzzle\Http\Message\Request;
@@ -88,6 +87,33 @@ class RequestTest extends \Guzzle\Tests\GuzzleTestCase
     }
 
     /**
+     * @covers Guzzle\Http\Message\Request::__construct
+     */
+    public function testConstructorHandlesBasicAuth()
+    {
+        $auth = base64_encode('michael:foo');
+        $request = new Request('GET', 'http://www.guzzle-project.com/', array(
+            'Authorization' => 'Basic ' . $auth
+        ));
+        $this->assertEquals('michael', $request->getUserName());
+        $this->assertEquals('foo', $request->getPassword());
+        $this->assertEquals('Basic ' . $auth, (string) $request->getHeader('Authorization'));
+    }
+
+    /**
+     * @covers Guzzle\Http\Message\Request::__construct
+     */
+    public function testConstructorHandlesNonBasicAuth()
+    {
+        $request = new Request('GET', 'http://www.guzzle-project.com/', array(
+            'Authorization' => 'Foo bar'
+        ));
+        $this->assertNull($request->getUserName());
+        $this->assertNull($request->getPassword());
+        $this->assertEquals('Foo bar', (string) $request->getHeader('Authorization'));
+    }
+
+    /**
      * @covers Guzzle\Http\Message\Request::__toString
      * @covers Guzzle\Http\Message\Request::getRawHeaders
      * @covers Guzzle\Http\Message\AbstractMessage::getHeaderString
@@ -98,7 +124,7 @@ class RequestTest extends \Guzzle\Tests\GuzzleTestCase
         $message = "PUT /path?q=1&v=2 HTTP/1.1\r\n"
             . "Host: www.google.com\r\n"
             . "Authorization: Basic {$auth}\r\n"
-            . "User-Agent: " . Guzzle::getDefaultUserAgent() . "\r\n"
+            . "User-Agent: " . Utils::getDefaultUserAgent() . "\r\n"
             . "Expect: 100-Continue\r\n"
             . "Content-Length: 4\r\n\r\nData";
 
@@ -123,6 +149,7 @@ class RequestTest extends \Guzzle\Tests\GuzzleTestCase
             ->setClient($this->client)
             ->setAuth('michael', '123', CURLAUTH_BASIC);
         $request->send();
+
         $this->assertContains('Authorization: Basic ' . $auth, (string) $request);
     }
 
@@ -382,12 +409,6 @@ class RequestTest extends \Guzzle\Tests\GuzzleTestCase
 
         $this->assertSame($this->request, $this->request->setUrl($u));
         $this->assertEquals($url, $this->request->getUrl());
-
-        try {
-            $this->request->setUrl(10);
-            $this->fail('Expected exception not thrown');
-        } catch (\InvalidArgumentException $e) {
-        }
     }
 
     /**
@@ -658,7 +679,7 @@ class RequestTest extends \Guzzle\Tests\GuzzleTestCase
         $messages = $this->getServer()->getReceivedRequests(false);
         $port = $this->getServer()->getPort();
 
-        $userAgent = Guzzle::getDefaultUserAgent();
+        $userAgent = Utils::getDefaultUserAgent();
 
         $this->assertEquals('127.0.0.1:' . $port, $requests[0]->getHeader('Host'));
         $this->assertEquals('127.0.0.1:' . $port, $requests[1]->getHeader('Host'));

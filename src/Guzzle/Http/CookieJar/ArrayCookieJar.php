@@ -2,7 +2,6 @@
 
 namespace Guzzle\Http\CookieJar;
 
-use Guzzle\Common\Collection;
 use Guzzle\Common\Exception\InvalidArgumentException;
 
 /**
@@ -25,9 +24,9 @@ class ArrayCookieJar implements CookieJarInterface, \Serializable
      * all three arguments, then the cookie with the specified name, path and
      * domain is removed.
      *
-     * @param string $domain (optional) Set to clear only cookies matching a domain
-     * @param string $path (optional) Set to clear only cookies matching a domain and path
-     * @param string $name (optional) Set to clear only cookies matching a domain, path, and name
+     * @param string $domain Set to clear only cookies matching a domain
+     * @param string $path   Set to clear only cookies matching a domain and path
+     * @param string $name   Set to clear only cookies matching a domain, path, and name
      *
      * @return int Returns the number of deleted cookies
      */
@@ -73,12 +72,11 @@ class ArrayCookieJar implements CookieJarInterface, \Serializable
     /**
      * Get all of the matching cookies
      *
-     * @param string $domain (optional) Domain of the cookie
-     * @param string $path (optional) Path of the cookie
-     * @param string $name (optional) Name of the cookie
-     * @param bool $skipDiscardables (optional) Set to TRUE to skip cookies with
-     *      the Discard attribute.
-     * @param bool $skipExpired (optional) Set to FALSE to include expired
+     * @param string $domain           Domain of the cookie
+     * @param string $path             Path of the cookie
+     * @param string $name             Name of the cookie
+     * @param bool   $skipDiscardables Set to TRUE to skip cookies with the Discard attribute.
+     * @param bool   $skipExpired      Set to FALSE to include expired
      *
      * @return array Returns an array of arrays.  Each array contains the
      *      following keys:
@@ -112,7 +110,7 @@ class ArrayCookieJar implements CookieJarInterface, \Serializable
             if ($domain && $cookie['domain']) {
                 if (!strcasecmp($domain, $cookie['domain'])) {
                     $domainMatch = true;
-                } else if ($cookie['domain'][0] == '.') {
+                } elseif ($cookie['domain'][0] == '.') {
                     $domainMatch = preg_match('/' . preg_quote($cookie['domain']) . '$/i', $domain);
                 }
             }
@@ -138,7 +136,7 @@ class ArrayCookieJar implements CookieJarInterface, \Serializable
     /**
      * Save a cookie
      *
-     * @parm array $cookieData Cookie information, including the following:
+     * @param array $cookieData Cookie information, including the following:
      *      domain  (string, required) - Domain of the cookie
      *      path    (string, required) - Path of the cookie
      *      cookie                     - Array of cookie name (0) and value (1)
@@ -181,7 +179,7 @@ class ArrayCookieJar implements CookieJarInterface, \Serializable
             if (!is_numeric($cookieData['expires'])) {
                 $cookieData['expires'] = strtotime($cookieData['expires']);
             }
-        } else if ($cookieData['max_age']) {
+        } elseif ($cookieData['max_age']) {
             // Calculate the expires date
             $cookieData['expires'] = time() + (int) $cookieData['max_age'];
         }

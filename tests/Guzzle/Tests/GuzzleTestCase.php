@@ -2,14 +2,16 @@
 
 namespace Guzzle\Tests;
 
+use Guzzle\Common\Collection;
 use Guzzle\Common\HasDispatcherInterface;
 use Guzzle\Common\Event;
 use Guzzle\Common\Log\Adapter\ZendLogAdapter;
 use Guzzle\Http\Message\Response;
 use Guzzle\Http\Message\RequestInterface;
+use Guzzle\Http\Message\HeaderComparison;
 use Guzzle\Http\Plugin\MockPlugin;
 use Guzzle\Service\Client;
-use Guzzle\Service\ServiceBuilder;
+use Guzzle\Service\Builder\ServiceBuilderInterface;
 use Guzzle\Tests\Mock\MockObserver;
 use Guzzle\Tests\Http\Server;
 use RuntimeException;
@@ -32,7 +34,7 @@ abstract class GuzzleTestCase extends \PHPUnit_Framework_TestCase
      *
      * @return Server
      */
-    public function getServer()
+    public static function getServer()
     {
         if (!self::$server) {
             try {
@@ -55,7 +57,7 @@ abstract class GuzzleTestCase extends \PHPUnit_Framework_TestCase
      *
      * @param ServiceBuilder $builder Service builder
      */
-    public static function setServiceBuilder(ServiceBuilder $builder)
+    public static function setServiceBuilder(ServiceBuilderInterface $builder)
     {
         self::$serviceBuilder = $builder;
     }
@@ -65,7 +67,7 @@ abstract class GuzzleTestCase extends \PHPUnit_Framework_TestCase
      *
      * @return ServiceBuilder
      */
-    public function getServiceBuilder()
+    public static function getServiceBuilder()
     {
         if (!self::$serviceBuilder) {
             throw new RuntimeException('No service builder has been set via setServiceBuilder()');
@@ -173,7 +175,9 @@ abstract class GuzzleTestCase extends \PHPUnit_Framework_TestCase
      * request sent by the client.
      *
      * @param Client $client Client object to modify
-     * @param string $paths Path to files within the Mock folder of the service
+     * @param string $paths  Path to files within the Mock folder of the service
+     *
+     * @return MockPlugin returns the created mock plugin
      */
     public function setMockResponse(Client $client, $paths)
     {
@@ -189,52 +193,8 @@ abstract class GuzzleTestCase extends \PHPUnit_Framework_TestCase
         }
 
         $client->getEventDispatcher()->addSubscriber($mock);
-    }
 
-    /**
-     * Check if an array of HTTP headers matches another array of HTTP headers
-     * while taking * into account as a wildcard for header values
-     *
-     * @param array $expected Expected HTTP headers (allows wildcard values)
-     * @param array|Collection $actual Actual HTTP header array
-     * @param array $ignore (optional) Headers to ignore from the comparison
-     * @param array $absent (optional) Array of headers that must not be present
-     *
-     * @return array|false Returns an array of the differences or FALSE if none
-     */
-    public function compareHttpHeaders(array $expected, $actual, array $ignore = array(), array $absent = array())
-    {
-        $differences = array();
-
-        // Add information about headers that were present but weren't supposed to be
-        foreach ($absent as $header) {
-            if (isset($actual[$header])) {
-                $differences["unexpected_{$header}"] = $actual[$header];
-            }
-        }
-
-        // Compare the expected and actual HTTP headers in no particular order
-        foreach ($actual as $key => $value) {
-
-            if (in_array($key, $ignore)) {
-                continue;
-            }
-
-            if (!isset($expected[$key])) {
-                $differences[$key] = $value;
-                continue;
-            }
-
-            // Check values and take wildcards into account
-            $pos = strpos($expected[$key], '*');
-            foreach ((array) $actual[$key] as $v) {
-                if (($pos === false && $v != $expected[$key]) || $pos > 0 && substr($v, 0, $pos) != substr($expected[$key], 0, $pos)) {
-                    $differences[$key] = $value;
-                }
-            }
-        }
-
-        return empty($differences) ? false : $differences;
+        return $mock;
     }
 
     /**
@@ -248,24 +208,22 @@ abstract class GuzzleTestCase extends \PHPUnit_Framework_TestCase
      *
      * @return array|false Returns an array of the differences or FALSE if none
      */
-    public function filterHeaders($filteredHeaders, $actualHeaders)
+    public function compareHeaders($filteredHeaders, $actualHeaders)
     {
-        $expected = array();
-        $ignore = array();
-        $absent = array();
+        $comparison = new HeaderComparison();
 
-        foreach ($filteredHeaders as $k => $v) {
-            if ($k[0] == '_') {
-                // This header should be ignored
-                $ignore[] = str_replace('_', '', $k);
-            } else if ($k[0] == '!') {
-                // This header must not be present
-                $absent[] = str_replace('!', '', $k);
-            } else {
-                $expected[$k] = $v;
-            }
-        }
+        return $comparison->compare($filteredHeaders, $actualHeaders);
+    }
 
-        return $this->compareHttpHeaders($expected, $actualHeaders, $ignore, $absent);
+    /**
+     * Case insensitive assertContains
+     *
+     * @param string $needle Search string
+     * @param string $haystack Search this
+     * @param string $message Optional failure message
+     */
+    public function assertContainsIns($needle, $haystack, $message = null)
+    {
+        $this->assertContains(strtolower($needle), strtolower($haystack), $message);
     }
 }

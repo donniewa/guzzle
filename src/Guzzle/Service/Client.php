@@ -7,12 +7,15 @@ use Guzzle\Common\Collection;
 use Guzzle\Common\Exception\InvalidArgumentException;
 use Guzzle\Common\Exception\BadMethodCallException;
 use Guzzle\Http\Client as HttpClient;
+use Guzzle\Http\Message\RequestInterface;
 use Guzzle\Service\Exception\CommandSetException;
 use Guzzle\Service\Command\CommandInterface;
 use Guzzle\Service\Command\CommandSet;
 use Guzzle\Service\Command\Factory\CompositeFactory;
 use Guzzle\Service\Command\Factory\ServiceDescriptionFactory;
 use Guzzle\Service\Command\Factory\FactoryInterface as CommandFactoryInterface;
+use Guzzle\Service\Resource\ResourceIteratorClassFactory;
+use Guzzle\Service\Resource\ResourceIteratorFactoryInterface;
 use Guzzle\Service\Description\ServiceDescription;
 
 /**
@@ -36,14 +39,19 @@ class Client extends HttpClient implements ClientInterface
     protected $commandFactory;
 
     /**
+     * @var ResourceIteratorFactoryInterface
+     */
+    protected $resourceIteratorFactory;
+
+    /**
      * Basic factory method to create a new client.  Extend this method in
      * subclasses to build more complex clients.
      *
-     * @param array|Collection $config (optional) Configuartion data
+     * @param array|Collection $config Configuration data
      *
      * @return Client
      */
-    public static function factory($config)
+    public static function factory($config = array())
     {
         return new static($config['base_url'], $config);
     }
@@ -65,7 +73,7 @@ class Client extends HttpClient implements ClientInterface
      * enabled on the client to use this functionality.
      *
      * @param string $method Name of the command object to instantiate
-     * @param array  $args   (optional) Arguments to pass to the command
+     * @param array  $args   Arguments to pass to the command
      *
      * @return mixed
      * @throws BadMethodCallException when a command is not found or magic
@@ -74,10 +82,12 @@ class Client extends HttpClient implements ClientInterface
     public function __call($method, $args = null)
     {
         if ($this->magicMethodBehavior == self::MAGIC_CALL_DISABLED) {
-            throw new BadMethodCallException("Missing method $method.  Enable"
-                . " magic calls to use magic methods with command names.");
+            throw new BadMethodCallException(
+                "Missing method $method.  Enable magic calls to use magic methods with command names."
+            );
         }
 
+        $args = isset($args[0]) ? $args[0] : array();
         $command = $this->getCommand(Inflector::snake($method), $args);
 
         return $this->magicMethodBehavior == self::MAGIC_CALL_RETURN
@@ -89,9 +99,9 @@ class Client extends HttpClient implements ClientInterface
      * Set the behavior for missing methods
      *
      * @param int $behavior Behavior to use when a missing method is called.
-     *     Set to Client::MAGIC_CALL_DISABLED to disable magic method calls
-     *     Set to Client::MAGIC_CALL_EXECUTE to execute commands and return the result
-     *     Set to Client::MAGIC_CALL_RETURN to instantiate and return the command
+     *     - Client::MAGIC_CALL_DISABLED: Disable magic method calls
+     *     - Client::MAGIC_CALL_EXECUTE:  Execute commands and return the result
+     *     - Client::MAGIC_CALL_RETURN:   Instantiate and return the command
      *
      * @return Client
      */
@@ -110,7 +120,7 @@ class Client extends HttpClient implements ClientInterface
      * are found, an InvalidArgumentException is thrown.
      *
      * @param string $name Name of the command to retrieve
-     * @param array $args (optional) Arguments to pass to the command
+     * @param array  $args Arguments to pass to the command
      *
      * @return CommandInterface
      * @throws InvalidArgumentException if no command can be found by name
@@ -136,20 +146,6 @@ class Client extends HttpClient implements ClientInterface
     }
 
     /**
-     * Get the command factory associated with the client
-     *
-     * @return CommandFactoryInterface
-     */
-    public function getCommandFactory()
-    {
-        if (!$this->commandFactory) {
-            $this->commandFactory = CompositeFactory::getDefaultChain($this);
-        }
-
-        return $this->commandFactory;
-    }
-
-    /**
      * Set the command factory used to create commands by name
      *
      * @param CommandFactoryInterface $factory Command factory
@@ -164,6 +160,38 @@ class Client extends HttpClient implements ClientInterface
     }
 
     /**
+     * Set the resource iterator factory associated with the client
+     *
+     * @param ResourceIteratorFactoryInterface $factory Resource iterator factory
+     *
+     * @return Client
+     */
+    public function setResourceIteratorFactory(ResourceIteratorFactoryInterface $factory)
+    {
+        $this->resourceIteratorFactory = $factory;
+
+        return $this;
+    }
+
+    /**
+     * Get a resource iterator from the client.
+     *
+     * @param string|CommandInterface $command         Command class or command name.
+     * @param array                   $commandOptions  Command options used when creating commands.
+     * @param array                   $iteratorOptions Iterator options passed to the iterator when it is instantiated.
+     *
+     * @return ResourceIteratorInterface
+     */
+    public function getIterator($command, array $commandOptions = null, array $iteratorOptions = array())
+    {
+        if (!($command instanceof CommandInterface)) {
+            $command = $this->getCommand($command, $commandOptions ?: array());
+        }
+
+        return $this->getResourceIteratorFactory()->build($command, $iteratorOptions);
+    }
+
+    /**
      * Execute a command and return the response
      *
      * @param CommandInterface|CommandSet|array $command Command or set to execute
@@ -172,22 +200,29 @@ class Client extends HttpClient implements ClientInterface
      *       {@see CommandInterface::getResult} method if a CommandInterface is
      *       passed, or the CommandSet itself if a CommandSet is passed
      * @throws InvalidArgumentException if an invalid command is passed
-     * @throws CommandSetException if a set contains commands associated
-     *      with other clients
+     * @throws CommandSetException if a set contains commands associated with other clients
      */
     public function execute($command)
     {
         if ($command instanceof CommandInterface) {
-            $command->setClient($this)->prepare();
+
+            $request = $command->setClient($this)->prepare();
             $this->dispatch('command.before_send', array(
                 'command' => $command
             ));
-            $command->getRequest()->send();
+
+            // Set the state to new if the command was previously executed
+            if ($request->getState() !== RequestInterface::STATE_NEW) {
+                $request->setState(RequestInterface::STATE_NEW);
+            }
+
+            $request->send();
             $this->dispatch('command.after_send', array(
                 'command' => $command
             ));
+
             return $command->getResult();
-        } else if ($command instanceof CommandSet) {
+        } elseif ($command instanceof CommandSet) {
             foreach ($command as $c) {
                 if ($c->getClient() && $c->getClient() !== $this) {
                     throw new CommandSetException(
@@ -197,8 +232,9 @@ class Client extends HttpClient implements ClientInterface
                 }
                 $c->setClient($this);
             }
+
             return $command->execute();
-        } else if (is_array($command)) {
+        } elseif (is_array($command)) {
             return $this->execute(new CommandSet($command));
         }
 
@@ -208,11 +244,9 @@ class Client extends HttpClient implements ClientInterface
     /**
      * Set the service description of the client
      *
-     * @param ServiceDescription $service Service description that describes
-     *     all of the commands and information of the client
-     * @param bool $updateFactory (optional) Set to FALSE to not update the service
-     *     description based command factory if it is not already present on
-     *     the client
+     * @param ServiceDescription $service Service description
+     * @param bool $updateFactory Set to FALSE to not update the service description based
+     *                            command factory if it is not already on the client.
      *
      * @return Client
      */
@@ -248,5 +282,36 @@ class Client extends HttpClient implements ClientInterface
     public function getDescription()
     {
         return $this->serviceDescription;
+    }
+
+    /**
+     * Get the resource iterator factory associated with the client
+     *
+     * @return ResourceIteratorFactoryInterface
+     */
+    protected function getResourceIteratorFactory()
+    {
+        if (!$this->resourceIteratorFactory) {
+            // Build the default resource iterator factory if one is not set
+            $clientClass = get_class($this);
+            $namespace = substr($clientClass, 0, strrpos($clientClass, '\\')) . '\\Model';
+            $this->resourceIteratorFactory = new ResourceIteratorClassFactory($namespace);
+        }
+
+        return $this->resourceIteratorFactory;
+    }
+
+    /**
+     * Get the command factory associated with the client
+     *
+     * @return CommandFactoryInterface
+     */
+    protected function getCommandFactory()
+    {
+        if (!$this->commandFactory) {
+            $this->commandFactory = CompositeFactory::getDefaultChain($this);
+        }
+
+        return $this->commandFactory;
     }
 }

@@ -2,7 +2,8 @@
 
 namespace Guzzle\Tests\Http;
 
-use Guzzle\Http\HttpException;
+use Guzzle\Http\Exception\BadResponseException;
+use Guzzle\Common\Exception\RuntimeException;
 use Guzzle\Http\Message\Request;
 use Guzzle\Http\Message\Response;
 use Guzzle\Http\Message\RequestInterface;
@@ -46,7 +47,7 @@ class Server
     /**
      * Create a new scripted server
      *
-     * @param int $port (optional) Port to listen on (defaults to 8124)
+     * @param int $port Port to listen on (defaults to 8124)
      */
     public function __construct($port = null)
     {
@@ -56,17 +57,14 @@ class Server
 
     /**
      * Destructor to safely shutdown the node.js server if it is still running
-     *
-     * @codeCoverageIgnore
      */
     public function __destruct()
     {
-        // Only shut the server down if the object knows it started the server
-        if ($this->running) {
+        // Disabled for now
+        if (false && $this->running) {
             try {
                 $this->stop();
-            } catch (\Exception $e) {
-            }
+            } catch (\Exception $e) {}
         }
     }
 
@@ -74,7 +72,7 @@ class Server
      * Flush the received requests from the server
      *
      * @return bool Returns TRUE on success or FALSE on failure
-     * @throws HttpException
+     * @throws RuntimeException
      */
     public function flush()
     {
@@ -95,7 +93,7 @@ class Server
      * @param array|Response $responses A single or array of Responses to queue
      *
      * @return bool Returns TRUE on success or FALSE on failure
-     * @throws HttpException
+     * @throws BadResponseException
      */
     public function enqueue($responses)
     {
@@ -105,8 +103,8 @@ class Server
             // Create the response object from a string
             if (is_string($response)) {
                 $response = Response::fromMessage($response);
-            } else if (!($response instanceof Response)) {
-                throw new HttpException(
+            } elseif (!($response instanceof Response)) {
+                throw new BadResponseException(
                     'Responses must be strings or implement Response'
                 );
             }
@@ -120,6 +118,7 @@ class Server
         }
 
         $request = $this->client->put('guzzle-server/responses', null, json_encode($data));
+        $request->removeHeader('Expect');
         $response = $request->send();
 
         return $response->getStatusCode() == 200;
@@ -168,12 +167,12 @@ class Server
     /**
      * Get all of the received requests
      *
-     * @param bool $hydrate (optional) Set to TRUE to turn the messages into
+     * @param bool $hydrate Set to TRUE to turn the messages into
      *      actual {@see RequestInterface} objects.  If $hydrate is FALSE,
      *      requests will be returned as strings.
      *
      * @return array
-     * @throws HttpException
+     * @throws RuntimeException
      */
     public function getReceivedRequests($hydrate = false)
     {
@@ -199,20 +198,16 @@ class Server
     {
         if (!$this->isRunning()) {
             exec('node ' . __DIR__ . \DIRECTORY_SEPARATOR . 'server.js ' . $this->port . ' >> /tmp/server.log 2>&1 &');
-            // Shut the server down when the script exits unexpectedly
-            register_shutdown_function(array($this, 'stop'));
             // Wait at most 5 seconds for the server the setup before proceeding
             $start = time();
             while (!$this->isRunning() && time() - $start < 5);
-            // @codeCoverageIgnoreStart
             if (!$this->isRunning()) {
-                throw new HttpException(
+                throw new RuntimeException(
                     'Unable to contact server.js.  Have you installed node.js '
                     . 'v0.5.0+?  The node.js executable, node, must also be in '
                     . 'your path.'
                 );
             }
-            // @codeCoverageIgnoreEnd
         }
 
         $this->running = true;
@@ -222,7 +217,7 @@ class Server
      * Stop running the node.js server
      *
      * @return bool Returns TRUE on success or FALSE on failure
-     * @throws HttpException
+     * @throws RuntimeException
      */
     public function stop()
     {

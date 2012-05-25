@@ -7,6 +7,7 @@ use Guzzle\Service\Client;
 use Guzzle\Service\Command\CommandInterface;
 use Guzzle\Service\Command\AbstractCommand;
 use Guzzle\Service\Description\ApiCommand;
+use Guzzle\Service\Inspector;
 use Guzzle\Http\Plugin\MockPlugin;
 use Guzzle\Tests\Service\Mock\Command\MockCommand;
 use Guzzle\Tests\Service\Mock\Command\Sub\Sub;
@@ -127,7 +128,9 @@ class CommandTest extends AbstractCommandTest
         $command = new MockCommand();
 
         $this->assertSame($command, $command->setClient($client));
-        $this->assertSame($command, $command->execute()); // Implicitly calls prepare
+
+        // Returns the result of the command
+        $this->assertInstanceOf('SimpleXMLElement', $command->execute());
 
         $this->assertTrue($command->isPrepared());
         $this->assertTrue($command->isExecuted());
@@ -306,5 +309,95 @@ class CommandTest extends AbstractCommandTest
         ), $this->getApiCommand());
         $command->setTest('foo');
         $this->assertEquals('foo', $command->get('test'));
+    }
+
+    /**
+     * @covers Guzzle\Service\Command\AbstractCommand::__clone
+     */
+    public function testCloneMakesNewRequest()
+    {
+        $client = $this->getClient();
+        $command = new MockCommand(array(
+            'command.magic_method_call' => true
+        ), $this->getApiCommand());
+        $command->setClient($client);
+
+        $command->prepare();
+        $this->assertTrue($command->isPrepared());
+
+        $command2 = clone $command;
+        $this->assertFalse($command2->isPrepared());
+    }
+
+    /**
+     * @covers Guzzle\Service\Command\AbstractCommand::setOnComplete
+     * @covers Guzzle\Service\Command\AbstractCommand::__construct
+     * @covers Guzzle\Service\Command\AbstractCommand::getResult
+     */
+    public function testHasOnCompleteMethod()
+    {
+        $that = $this;
+        $called = 0;
+
+        $testFunction = function($command) use (&$called, $that) {
+            $called++;
+            $that->assertInstanceOf('Guzzle\Service\Command\CommandInterface', $command);
+        };
+
+        $client = $this->getClient();
+        $command = new MockCommand(array(
+            'command.on_complete' => $testFunction
+        ), $this->getApiCommand());
+        $command->setClient($client);
+
+        $command->prepare()->setResponse(new Response(200));
+        $command->execute();
+        $this->assertEquals(1, $called);
+    }
+
+    /**
+     * @covers Guzzle\Service\Command\AbstractCommand::setOnComplete
+     * @expectedException Guzzle\Common\Exception\InvalidArgumentException
+     */
+    public function testOnCompleteMustBeCallable()
+    {
+        $client = $this->getClient();
+        $command = new MockCommand();
+        $command->setOnComplete('foo');
+    }
+
+    /**
+     * @covers Guzzle\Service\Command\AbstractCommand::setInspector
+     * @covers Guzzle\Service\Command\AbstractCommand::getInspector
+     */
+    public function testInspectorCanBeInjected()
+    {
+        $instance = Inspector::getInstance();
+        $command = new MockCommand();
+
+        $refObject = new \ReflectionObject($command);
+        $method = $refObject->getMethod('getInspector');
+        $method->setAccessible(true);
+
+        $this->assertSame($instance, $method->invoke($command));
+
+        $newInspector = new Inspector();
+        $command->setInspector($newInspector);
+        $this->assertSame($newInspector, $method->invoke($command));
+    }
+
+    /**
+     * @covers Guzzle\Service\Command\AbstractCommand::setResult
+     */
+    public function testCanSetResultManually()
+    {
+        $client = $this->getClient();
+        $client->getEventDispatcher()->addSubscriber(new MockPlugin(array(
+            new Response(200)
+        )));
+        $command = new MockCommand();
+        $client->execute($command);
+        $command->setResult('foo!');
+        $this->assertEquals('foo!', $command->getResult());
     }
 }
