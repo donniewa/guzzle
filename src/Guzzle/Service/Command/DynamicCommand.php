@@ -53,17 +53,17 @@ class DynamicCommand extends AbstractCommand
             }
 
             // Create the value based on prepend and append settings
-            $value = $arg->getPrepend() . $configValue . $arg->getAppend();
+            if ($arg->getPrepend() || $arg->getAppend()) {
+                $value = $arg->getPrepend() . $configValue . $arg->getAppend();
+            } else {
+                $value = $configValue;
+            }
 
-            // Determine the location and key setting location[:key]
-            $parts = explode(':', $location);
-            $place = $parts[0];
-
-            // If a key is specified (using location:key), use it
-            $key = isset($parts[1]) ? $parts[1] : $name;
+            // If a location key mapping is set, then use it
+            $key = $arg->getLocationKey() ?: $name;
 
             // Add the parameter to the request
-            switch ($place) {
+            switch ($location) {
                 case 'body':
                     $this->request->setBody(EntityBody::factory($value));
                     break;

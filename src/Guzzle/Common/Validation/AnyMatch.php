@@ -3,6 +3,7 @@
 namespace Guzzle\Common\Validation;
 
 use Guzzle\Common\Exception\InvalidArgumentException;
+use Guzzle\Service\Inspector;
 
 /**
  * Ensures that a value passes any of the validation constraints.
@@ -21,12 +22,23 @@ class AnyMatch extends AbstractConstraint
     protected function validateValue($value, array $options = array())
     {
         if (!isset($options['inspector'])) {
-            throw new InvalidArgumentException('An "inspector" must be provided');
+            $options['inspector'] = Inspector::getInstance();
         }
 
         $inspector = $options['inspector'];
         foreach (explode(';', $options['constraints']) as $constraint) {
-            if (true === $inspector->validateConstraint(trim($constraint), $value)) {
+
+            $constraint = trim($constraint);
+
+            // Handle colon separated values
+            if (strpos($constraint, ':')) {
+                list($constraint, $args) = explode(':', $constraint, 2);
+                $args = strpos($args, ',') !== false ? str_getcsv($args, ',', "'") : array($args);
+            } else {
+                $args = null;
+            }
+
+            if (true === $inspector->validateConstraint($constraint, $value, $args)) {
                 return true;
             }
         }
