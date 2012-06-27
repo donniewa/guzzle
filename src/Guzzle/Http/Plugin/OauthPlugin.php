@@ -165,6 +165,6 @@ class OauthPlugin implements EventSubscriberInterface
      */
     protected function generateNonce(RequestInterface $request, $timestamp)
     {
-        return sha1($timestamp . $request->getUrl());
+        return sha1($request->getMethod() . $timestamp . $request->getUrl());
     }
 }
