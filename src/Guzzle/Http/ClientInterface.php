@@ -2,7 +2,6 @@
 
 namespace Guzzle\Http;
 
-use Guzzle\Common\Guzzle;
 use Guzzle\Common\HasDispatcherInterface;
 use Guzzle\Common\Collection;
 use Guzzle\Http\Message\RequestInterface;
@@ -232,6 +231,14 @@ interface ClientInterface extends HasDispatcherInterface
      * @return ClientInterface
      */
     function setCurlMulti(CurlMultiInterface $curlMulti);
+
+    /**
+     * Get the curl multi object to be used internally by the client for
+     * transferring requests.
+     *
+     * @return CurlMultiInterface
+     */
+    function getCurlMulti();
 
     /**
      * Set the request factory to use with the client when creating requests

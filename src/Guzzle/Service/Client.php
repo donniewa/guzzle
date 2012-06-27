@@ -2,15 +2,14 @@
 
 namespace Guzzle\Service;
 
-use Guzzle\Service\Inflector;
 use Guzzle\Common\Collection;
 use Guzzle\Common\Exception\InvalidArgumentException;
 use Guzzle\Common\Exception\BadMethodCallException;
+use Guzzle\Inflection\InflectorInterface;
+use Guzzle\Inflection\Inflector;
 use Guzzle\Http\Client as HttpClient;
 use Guzzle\Http\Message\RequestInterface;
-use Guzzle\Service\Exception\CommandSetException;
 use Guzzle\Service\Command\CommandInterface;
-use Guzzle\Service\Command\CommandSet;
 use Guzzle\Service\Command\Factory\CompositeFactory;
 use Guzzle\Service\Command\Factory\ServiceDescriptionFactory;
 use Guzzle\Service\Command\Factory\FactoryInterface as CommandFactoryInterface;
@@ -44,6 +43,11 @@ class Client extends HttpClient implements ClientInterface
     protected $resourceIteratorFactory;
 
     /**
+     * @var InflectorInterface Inflector associated with the service/client
+     */
+    protected $inflector;
+
+    /**
      * Basic factory method to create a new client.  Extend this method in
      * subclasses to build more complex clients.
      *
@@ -63,6 +67,7 @@ class Client extends HttpClient implements ClientInterface
     {
         return array_merge(HttpClient::getAllEvents(), array(
             'client.command.create',
+            'command.before_prepare',
             'command.before_send',
             'command.after_send'
         ));
@@ -83,16 +88,13 @@ class Client extends HttpClient implements ClientInterface
     {
         if ($this->magicMethodBehavior == self::MAGIC_CALL_DISABLED) {
             throw new BadMethodCallException(
-                "Missing method $method.  Enable magic calls to use magic methods with command names."
+                "Missing method {$method}.  Enable magic calls to use magic methods with command names."
             );
         }
 
-        $args = isset($args[0]) ? $args[0] : array();
-        $command = $this->getCommand(Inflector::snake($method), $args);
+        $command = $this->getCommand($method, isset($args[0]) ? $args[0] : array());
 
-        return $this->magicMethodBehavior == self::MAGIC_CALL_RETURN
-            ? $command
-            : $this->execute($command);
+        return $this->magicMethodBehavior == self::MAGIC_CALL_RETURN ? $command : $this->execute($command);
     }
 
     /**
@@ -127,11 +129,6 @@ class Client extends HttpClient implements ClientInterface
      */
     public function getCommand($name, array $args = array())
     {
-        // Enable magic method calls on commands if it's enabled on the client
-        if ($this->magicMethodBehavior) {
-            $args['command.magic_method_call'] = true;
-        }
-
         $command = $this->getCommandFactory()->factory($name, $args);
         if (!$command) {
             throw new InvalidArgumentException("Command was not found matching {$name}");
@@ -192,53 +189,46 @@ class Client extends HttpClient implements ClientInterface
     }
 
     /**
-     * Execute a command and return the response
+     * Execute one or more commands
      *
-     * @param CommandInterface|CommandSet|array $command Command or set to execute
+     * @param CommandInterface|array $command Command or array of commands to execute
      *
-     * @return mixed Returns the result of the executed command's
-     *       {@see CommandInterface::getResult} method if a CommandInterface is
-     *       passed, or the CommandSet itself if a CommandSet is passed
+     * @return mixed Returns the result of the executed command or an array of
+     *               commands if an array of commands was passed.
      * @throws InvalidArgumentException if an invalid command is passed
-     * @throws CommandSetException if a set contains commands associated with other clients
      */
     public function execute($command)
     {
         if ($command instanceof CommandInterface) {
-
-            $request = $command->setClient($this)->prepare();
-            $this->dispatch('command.before_send', array(
-                'command' => $command
-            ));
-
-            // Set the state to new if the command was previously executed
-            if ($request->getState() !== RequestInterface::STATE_NEW) {
-                $request->setState(RequestInterface::STATE_NEW);
-            }
-
-            $request->send();
-            $this->dispatch('command.after_send', array(
-                'command' => $command
-            ));
-
-            return $command->getResult();
-        } elseif ($command instanceof CommandSet) {
-            foreach ($command as $c) {
-                if ($c->getClient() && $c->getClient() !== $this) {
-                    throw new CommandSetException(
-                        'Attempting to run a mixed-Client CommandSet from a ' .
-                        'Client context.  Run the set using CommandSet::execute() '
-                    );
-                }
-                $c->setClient($this);
-            }
-
-            return $command->execute();
+            $command = array($command);
+            $singleCommand = true;
         } elseif (is_array($command)) {
-            return $this->execute(new CommandSet($command));
+            $singleCommand = false;
+        } else {
+            throw new InvalidArgumentException('Command must be a command or array of commands');
         }
 
-        throw new InvalidArgumentException('Invalid command sent to ' . __METHOD__);
+        $requests = array();
+
+        foreach ($command as $c) {
+            $event = array('command' => $c->setClient($this));
+            $this->dispatch('command.before_prepare', $event);
+            // Set the state to new if the command was previously executed
+            $requests[] = $c->prepare()->setState(RequestInterface::STATE_NEW);
+            $this->dispatch('command.before_send', $event);
+        }
+
+        if ($singleCommand) {
+            $this->send($requests[0]);
+        } else {
+            $this->send($requests);
+        }
+
+        foreach ($command as $c) {
+            $this->dispatch('command.after_send', array('command' => $c));
+        }
+
+        return $singleCommand ? end($command)->getResult() : $command;
     }
 
     /**
@@ -282,6 +272,34 @@ class Client extends HttpClient implements ClientInterface
     public function getDescription()
     {
         return $this->serviceDescription;
+    }
+
+    /**
+     * Set the inflector used with the client
+     *
+     * @param InflectorInterface $inflector Inflection object
+     *
+     * @return Client
+     */
+    public function setInflector(InflectorInterface $inflector)
+    {
+        $this->inflector = $inflector;
+
+        return $this;
+    }
+
+    /**
+     * Get the inflector used with the client
+     *
+     * @return InflectorInterface
+     */
+    public function getInflector()
+    {
+        if (!$this->inflector) {
+            $this->inflector = Inflector::getDefault();
+        }
+
+        return $this->inflector;
     }
 
     /**

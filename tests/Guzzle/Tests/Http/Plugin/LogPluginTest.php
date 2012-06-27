@@ -147,6 +147,9 @@ class LogPluginTest extends \Guzzle\Tests\GuzzleTestCase
 
         // Response body
         $this->assertContains("data", $message);
+
+        // Ensure that the debug option was set
+        $this->assertTrue($request->getCurlOptions()->get('debug'));
     }
 
     public function testLogsRequestAndResponseWireContentAndHeadersNonStreamable()
@@ -266,7 +269,7 @@ class LogPluginTest extends \Guzzle\Tests\GuzzleTestCase
 
         // Check if debug information is being logged
         if ($level & LogPlugin::LOG_DEBUG) {
-            $this->assertContains("\n* Connected to 127.0.0.1 (127.0.0.1) port", $gen);
+            $this->assertContains("\n* Connected to ", $gen);
         }
 
         // Check if the headers are being properly logged

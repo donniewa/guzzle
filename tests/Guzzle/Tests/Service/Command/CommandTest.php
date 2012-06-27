@@ -189,7 +189,7 @@ class CommandTest extends AbstractCommandTest
 
         $client->getEventDispatcher()->addSubscriber(new MockPlugin(array(
             new Response(200, array(
-                'Content-Type' => 'application/octect-stream'
+                'Content-Type' => 'application/octet-stream'
             ), 'abc,def,ghi')
         )));
 
@@ -277,50 +277,12 @@ class CommandTest extends AbstractCommandTest
     }
 
     /**
-     * @covers Guzzle\Service\Command\AbstractCommand::__call
-     * @expectedException Guzzle\Common\Exception\BadMethodCallException
-     * @expectedExceptionMessage Magic method calls are disabled for this command.  Consider enabling magic method calls by setting the command.magic_method_call parameter to true.
-     */
-    public function testMissingMethodCallsThrowExceptionsWhenMagicIsDisabled()
-    {
-        $command = new MockCommand(array());
-        $command->setFooBarBaz('123');
-    }
-
-    /**
-     * @covers Guzzle\Service\Command\AbstractCommand::__call
-     * @expectedException Guzzle\Common\Exception\BadMethodCallException
-     * @expectedExceptionMessage Missing method setFoo
-     */
-    public function testMissingMethodCallsThrowExceptionsWhenParameterIsInvalid()
-    {
-        $command = new MockCommand(array(
-            'command.magic_method_call' => true
-        ), $this->getApiCommand());
-        $command->setFoo('bar_baz');
-    }
-
-    /**
-     * @covers Guzzle\Service\Command\AbstractCommand::__call
-     */
-    public function testMissingMethodCallsAllowedWhenEnabled()
-    {
-        $command = new MockCommand(array(
-            'command.magic_method_call' => true
-        ), $this->getApiCommand());
-        $command->setTest('foo');
-        $this->assertEquals('foo', $command->get('test'));
-    }
-
-    /**
      * @covers Guzzle\Service\Command\AbstractCommand::__clone
      */
     public function testCloneMakesNewRequest()
     {
         $client = $this->getClient();
-        $command = new MockCommand(array(
-            'command.magic_method_call' => true
-        ), $this->getApiCommand());
+        $command = new MockCommand(array(), $this->getApiCommand());
         $command->setClient($client);
 
         $command->prepare();
@@ -351,7 +313,7 @@ class CommandTest extends AbstractCommandTest
         ), $this->getApiCommand());
         $command->setClient($client);
 
-        $command->prepare()->setResponse(new Response(200));
+        $command->prepare()->setResponse(new Response(200), true);
         $command->execute();
         $this->assertEquals(1, $called);
     }

@@ -2,14 +2,12 @@
 
 namespace Guzzle\Http;
 
-use Guzzle\Common\Guzzle;
 use Guzzle\Common\Collection;
 use Guzzle\Common\AbstractHasDispatcher;
 use Guzzle\Common\Exception\ExceptionCollection;
 use Guzzle\Common\Exception\InvalidArgumentException;
 use Guzzle\Http\Utils;
 use Guzzle\Http\Url;
-use Guzzle\Http\UriTemplate;
 use Guzzle\Http\EntityBody;
 use Guzzle\Http\Parser\ParserRegistry;
 use Guzzle\Http\Parser\UriTemplate\UriTemplateInterface;
@@ -243,7 +241,7 @@ class Client extends AbstractHasDispatcher implements ClientInterface
             $url = Url::factory($this->getBaseUrl())->combine($this->expandTemplate($uri, $templateVars));
         }
 
-        // If default headers are provided, then merge them into exising headers
+        // If default headers are provided, then merge them into existing headers
         // If a collision occurs, the header is completely replaced
         if (count($this->defaultHeaders)) {
             if ($headers instanceof Collection) {
@@ -463,7 +461,7 @@ class Client extends AbstractHasDispatcher implements ClientInterface
     public function send($requests)
     {
         $curlMulti = $this->getCurlMulti();
-        $multipleRequests = is_array($requests);
+        $multipleRequests = !($requests instanceof RequestInterface);
         if (!$multipleRequests) {
             $requests = array($requests);
         }

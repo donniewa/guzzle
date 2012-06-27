@@ -1,6 +1,50 @@
 CHANGELOG
 =========
 
+* 2.7.1 (06-26-2012)
+
+ * Minor patch to update version number in UA string
+ * Updating build process
+
+* 2.7.0 (06-25-2012)
+
+ * BC: Inflection classes moved to Guzzle\Inflection. No longer static methods. Can now inject custom inflectors into classes.
+ * BC: Removed magic setX methods from commands
+ * BC: Magic methods mapped to service description commands are now inflected in the command factory rather than the client __call() method
+ * Verbose cURL options are no longer enabled by default. Set curl.debug to true on a client to enable.
+ * Bug: Now allowing colons in a response start-line (e.g. HTTP/1.1 503 Service Unavailable: Back-end server is at capacity)
+ * Guzzle\Service\Resource\ResourceIteratorApplyBatched now internally uses the Guzzle\Common\Batch namespace
+ * Added Guzzle\Service\Plugin namespace and a PluginCollectionPlugin
+ * Added the ability to set POST fields and files in a service description
+ * Guzzle\Http\EntityBody::factory() now accepts objects with a __toString() method
+ * Adding a command.before_prepare event to clients
+ * Added BatchClosureTransfer and BatchClosureDivisor
+ * BatchTransferException now includes references to the batch divisor and transfer strategies
+ * Fixed some tests so that they pass more reliably
+ * Added Guzzle\Common\Log\ArrayLogAdapter
+
+* 2.6.6 (06-10-2012)
+
+ * BC: Removing Guzzle\Http\Plugin\BatchQueuePlugin
+ * BC: Removing Guzzle\Service\Command\CommandSet
+ * Adding generic batching system (replaces the batch queue plugin and command set)
+ * Updating ZF cache and log adapters and now using ZF's composer repository
+ * Bug: Setting the name of each ApiParam when creating through an ApiCommand
+ * Adding result_type, result_doc, deprecated, and doc_url to service descriptions
+ * Bug: Changed the default cookie header casing back to 'Cookie'
+
+* 2.6.5 (06-03-2012)
+
+ * BC: Renaming Guzzle\Http\Message\RequestInterface::getResourceUri() to getResource()
+ * BC: Removing unused AUTH_BASIC and AUTH_DIGEST constants from
+ * BC: Guzzle\Http\Cookie is now used to manage Set-Cookie data, not Cookie data
+ * BC: Renaming methods in the CookieJarInterface
+ * Moving almost all cookie logic out of the CookiePlugin and into the Cookie or CookieJar implementations
+ * Making the default glue for HTTP headers ';' instead of ','
+ * Adding a removeValue to Guzzle\Http\Message\Header
+ * Adding getCookies() to request interface.
+ * Making it easier to add event subscribers to HasDispatcherInterface classes. Can now directly call addSubscriber()
+
 * 2.6.4 (05-30-2012)
 
  * BC: Cleaning up how POST files are stored in EntityEnclosingRequest objects. Adding PostFile class.

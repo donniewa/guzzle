@@ -3,6 +3,7 @@
 namespace Guzzle\Http\Curl;
 
 use Guzzle\Common\Exception\InvalidArgumentException;
+use Guzzle\Common\Exception\RuntimeException;
 use Guzzle\Common\Collection;
 use Guzzle\Http\Message\RequestInterface;
 use Guzzle\Http\Parser\ParserRegistry;
@@ -76,8 +77,13 @@ class CurlHandle
         }
 
         // Enable curl debug information if the 'debug' param was set
-        if (!$requestCurlOptions->get('disable_wire')) {
+        if ($requestCurlOptions->get('debug')) {
             $curlOptions[CURLOPT_STDERR] = fopen('php://temp', 'r+');
+            // @codeCoverageIgnoreStart
+            if (false === $curlOptions[CURLOPT_STDERR]) {
+                throw new RuntimeException('Unable to create a stream for CURLOPT_STDERR');
+            }
+            // @codeCoverageIgnoreEnd
             $curlOptions[CURLOPT_VERBOSE] = true;
         }
 
@@ -191,7 +197,7 @@ class CurlHandle
             }
         }
 
-        // Add any custom headers to the request. Emtpy headers will cause curl to
+        // Add any custom headers to the request. Empty headers will cause curl to
         // not send the header at all.
         foreach ($request->getHeaders() as $headerName => $values) {
             foreach ($values as $value) {

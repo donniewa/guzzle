@@ -493,7 +493,7 @@ class Zend_Log
 
     /**
      * Add a writer.  A writer is responsible for taking a log
-     * message and writing it out to storage.
+     * message and writing it out to jar.
      *
      * @param  mixed $writer Zend_Log_Writer_Abstract or Config array
      * @return Zend_Log
@@ -554,7 +554,7 @@ class Zend_Log
 
         $this->_origErrorHandler = set_error_handler(array($this, 'errorHandler'));
 
-        // Contruct a default map of phpErrors to Zend_Log priorities.
+        // Construct a default map of phpErrors to Zend_Log priorities.
         // Some of the errors are uncatchable, but are included for completeness
         $this->_errorHandlerMap = array(
             E_NOTICE            => Zend_Log::NOTICE,
